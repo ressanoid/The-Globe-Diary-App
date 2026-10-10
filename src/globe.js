@@ -37,7 +37,7 @@ export class GlobeScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
-    this.controls.minDistance = 120;
+    this.controls.minDistance = 100;
     this.controls.maxDistance = 450;
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.25;
@@ -52,6 +52,9 @@ export class GlobeScene {
     this.starMeshes = [];
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
+
+    this.targetCameraPos = null;
+    this.targetLookAt = null;
 
     this.textureLoader = new THREE.TextureLoader();
     this.nightTexture = this.textureLoader.load(nightMapUrl);
@@ -85,7 +88,7 @@ export class GlobeScene {
   }
 
   initLights() {
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
     this.scene.add(this.ambientLight);
 
     this.sunLight = new THREE.DirectionalLight(0xfff5ea, 1.4);
@@ -142,7 +145,6 @@ export class GlobeScene {
     this.globeMesh = new THREE.Mesh(geometry, this.earthShaderMaterial);
     this.scene.add(this.globeMesh);
 
-    // Glowing atmospheric rim
     const atmosphereGeo = new THREE.SphereGeometry(this.globeRadius * 1.018, 48, 48);
     this.atmosphereMat = new THREE.MeshBasicMaterial({
       color: 0x4fa8d8,
@@ -204,15 +206,12 @@ export class GlobeScene {
     return new THREE.Vector3(x, y, z);
   }
 
-  // --- Render Pins from Data Store ---
   renderEntries(entries) {
-    // Clear existing pins
     while (this.pinsGroup.children.length > 0) {
       this.pinsGroup.remove(this.pinsGroup.children[0]);
     }
     this.pinMeshes = [];
 
-    // Clear shooting stars from celestial group (preserve moon)
     for (let i = this.celestialGroup.children.length - 1; i >= 0; i--) {
       const child = this.celestialGroup.children[i];
       if (child !== this.moonMesh) {
@@ -228,18 +227,15 @@ export class GlobeScene {
         const pinGroup = new THREE.Group();
         const basePos = this.latLngToVector3(entry.lat, entry.lng, this.globeRadius);
 
-        // Position on surface
         pinGroup.position.copy(basePos);
         pinGroup.lookAt(new THREE.Vector3(0, 0, 0));
 
-        // Core glowing beacon dot
         const beaconGeo = new THREE.SphereGeometry(1.6, 16, 16);
         const beaconMat = new THREE.MeshBasicMaterial({ color: pinColor });
         const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
         beaconMesh.position.set(0, 0, -1.8);
         pinGroup.add(beaconMesh);
 
-        // Radiant expanding halo
         const haloGeo = new THREE.RingGeometry(1.2, 3.2, 24);
         const haloMat = new THREE.MeshBasicMaterial({
           color: pinColor,
@@ -251,7 +247,6 @@ export class GlobeScene {
         haloMesh.position.set(0, 0, -1.6);
         pinGroup.add(haloMesh);
 
-        // Stem connecting to surface
         const stemGeo = new THREE.CylinderGeometry(0.35, 0.35, 2.5, 8);
         const stemMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
         const stemMesh = new THREE.Mesh(stemGeo, stemMat);
@@ -269,7 +264,6 @@ export class GlobeScene {
         this.pinsGroup.add(pinGroup);
         this.pinMeshes.push(pinGroup);
       } else if (entry.destination === 'shooting-star') {
-        // Celestial Shooting Star wish marker
         const starGroup = new THREE.Group();
         const pos = entry.starPosition || { x: -130, y: 100, z: -90 };
         starGroup.position.set(pos.x, pos.y, pos.z);
@@ -279,7 +273,6 @@ export class GlobeScene {
         const starCore = new THREE.Mesh(starCoreGeo, starCoreMat);
         starGroup.add(starCore);
 
-        // Sparkle ring
         const sparkleGeo = new THREE.RingGeometry(3, 4.5, 16);
         const sparkleMat = new THREE.MeshBasicMaterial({
           color: pinColor,
@@ -304,7 +297,31 @@ export class GlobeScene {
     });
   }
 
-  // Filter pins by recency (e.g. today / within last 24h)
+  // --- Zoom Smoothly to Moon ---
+  zoomToMoon() {
+    this.controls.autoRotate = false;
+    const moonPos = this.moonMesh.position;
+    // Set target look-at to Moon center
+    this.targetLookAt = moonPos.clone();
+    // Position camera just in front of Moon
+    const offset = new THREE.Vector3(25, 15, 35);
+    this.targetCameraPos = moonPos.clone().add(offset);
+  }
+
+  // --- Focus on Earth Lat/Lng ---
+  focusOnCoordinates(lat, lng) {
+    this.controls.autoRotate = false;
+    const pinPos = this.latLngToVector3(lat, lng, this.globeRadius);
+    this.targetLookAt = new THREE.Vector3(0, 0, 0);
+    this.targetCameraPos = pinPos.clone().normalize().multiplyScalar(170);
+  }
+
+  resetCameraFocus() {
+    this.targetLookAt = new THREE.Vector3(0, 0, 0);
+    this.targetCameraPos = new THREE.Vector3(0, 0, 250);
+    this.controls.autoRotate = true;
+  }
+
   setRecencyFilter(filter) {
     const oneDayAgo = Date.now() - 24 * 3600 * 1000;
     const allMeshes = [...this.pinMeshes, ...this.starMeshes];
@@ -358,6 +375,12 @@ export class GlobeScene {
       if (target && target.userData) {
         this.controls.autoRotate = false;
         const entryId = target.userData.entryId || target.userData.id;
+
+        // If user clicked the Moon, zoom camera right to it!
+        if (target.userData.type === 'moon' || target === this.moonMesh) {
+          this.zoomToMoon();
+        }
+
         if (this.onPinClick) {
           this.onPinClick(entryId);
         }
@@ -367,6 +390,21 @@ export class GlobeScene {
 
   animate() {
     requestAnimationFrame(this.animate);
+
+    // Smooth camera interpolation toward target
+    if (this.targetCameraPos) {
+      this.camera.position.lerp(this.targetCameraPos, 0.05);
+      if (this.camera.position.distanceTo(this.targetCameraPos) < 1.0) {
+        this.targetCameraPos = null;
+      }
+    }
+    if (this.targetLookAt) {
+      this.controls.target.lerp(this.targetLookAt, 0.05);
+      if (this.controls.target.distanceTo(this.targetLookAt) < 0.5) {
+        this.targetLookAt = null;
+      }
+    }
+
     this.controls.update();
 
     const sunDir = this.getSunDirection();

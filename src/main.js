@@ -1,15 +1,22 @@
 import { GlobeScene } from './globe.js';
 import { DataStore } from './store.js';
+import { UIManager } from './ui.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('globe-container');
   const store = new DataStore();
 
+  let ui = null;
+
   // Initialize Globe
   const globe = new GlobeScene(container, (entryId) => {
-    const entry = store.getEntryById(entryId);
-    console.log('Selected entry:', entry);
+    if (ui) {
+      ui.showAuthorModal(entryId);
+    }
   });
+
+  // Initialize UI Manager
+  ui = new UIManager(store, globe);
 
   // Render initial entries from store onto globe
   const entries = store.getAllEntries();
@@ -28,4 +35,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.__globe = globe;
   window.__store = store;
+  window.__ui = ui;
 });
