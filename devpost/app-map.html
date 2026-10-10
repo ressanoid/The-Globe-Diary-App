@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Globe Diary — App Map & Architecture Tour</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #070a13;
+      --card-bg: rgba(18, 24, 43, 0.85);
+      --border: rgba(255, 255, 255, 0.12);
+      --cyan: #00f0ff;
+      --amber: #ffb347;
+      --violet: #a78bfa;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--cyan);
+      margin-bottom: 8px;
+    }
+    p.lead {
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      backdrop-filter: blur(12px);
+    }
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--amber);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .flow-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 14px;
+    }
+    .flow-step {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .flow-step strong {
+      display: block;
+      color: var(--cyan);
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+    .file-tag {
+      display: inline-block;
+      font-family: monospace;
+      font-size: 12px;
+      background: rgba(0, 240, 255, 0.1);
+      color: var(--cyan);
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+    .reusable-box {
+      border-left: 4px solid var(--cyan);
+      padding-left: 16px;
+      margin-top: 12px;
+      font-size: 14px;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🌍 The Globe Diary — Application Map</h1>
+      <p class="lead">How your proof of concept is built, where the pieces live, and reusable patterns to take forward.</p>
+    </header>
+
+    <div class="card">
+      <h2>🗺️ Three Core Architectural Layers</h2>
+      <div class="flow-grid">
+        <div class="flow-step">
+          <strong>1. 3D Scene Controller</strong>
+          <p>Renders WebGL Earth, real-time Sun solar terminator shader, cratered Moon, aligned shooting star comets, and raycast click detection.</p>
+          <span class="file-tag">src/globe.js</span>
+        </div>
+        <div class="flow-step">
+          <strong>2. Local Data Store</strong>
+          <p>Manages pre-seeded global stories, user-created entries, reaction counters, and synchronizes automatically with browser localStorage.</p>
+          <span class="file-tag">src/store.js</span>
+        </div>
+        <div class="flow-step">
+          <strong>3. UI & Modals Manager</strong>
+          <p>Controls the Author Journey Timeline, mascot illustration for single entries, reflection composer, and the compassionate check-in prompt.</p>
+          <span class="file-tag">src/ui.js</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>💡 Reusable Practice to Take Forward</h2>
+      <div class="reusable-box">
+        <strong>The Flipped Plan-First Workflow:</strong>
+        <p>By defining your <em>Kernel</em> ("you are not alone") in <code>2-scope</code>, pinning down exact behaviors and non-forced venting in <code>3-prd</code>, and setting clean file boundaries in <code>4-spec</code>, the agent built working slices without guessing your intent. You steered every decision, caught edge cases early (like real-time day/night, moon whispers, and star alignment), and reached a working, verifiable proof of concept in hours.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
