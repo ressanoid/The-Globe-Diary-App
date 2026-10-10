@@ -11,9 +11,9 @@
 /* Night Mode (Cosmic Sanctuary) */
 body[data-theme="night"] {
   --bg-primary: #070a13;
-  --bg-secondary: rgba(15, 23, 42, 0.75);
-  --bg-glass: rgba(18, 24, 43, 0.7);
-  --border-subtle: rgba(255, 255, 255, 0.1);
+  --bg-secondary: rgba(15, 23, 42, 0.85);
+  --bg-glass: rgba(18, 24, 43, 0.8);
+  --border-subtle: rgba(255, 255, 255, 0.12);
   --border-glow: rgba(0, 240, 255, 0.35);
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
@@ -23,31 +23,23 @@ body[data-theme="night"] {
   --accent-violet: #a78bfa;
   --accent-emerald: #10b981;
   --accent-rose: #f43f5e;
-  --globe-bg: #03060c;
-  --globe-ocean: #091224;
-  --globe-land: #14213d;
-  --globe-glow: #00f0ff;
 }
 
-/* Day Mode (Earth & Paper Journal) */
+/* Day Mode (Soft Natural Paper Journal - Calm, Muted, Never Harsh) */
 body[data-theme="day"] {
-  --bg-primary: #fbf8f1;
-  --bg-secondary: rgba(243, 239, 231, 0.85);
-  --bg-glass: rgba(255, 255, 255, 0.82);
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-glow: rgba(200, 109, 81, 0.4);
-  --text-primary: #2c302e;
-  --text-secondary: #57605c;
-  --text-muted: #828d88;
+  --bg-primary: #e8e3d8;
+  --bg-secondary: rgba(232, 227, 216, 0.9);
+  --bg-glass: rgba(245, 241, 233, 0.88);
+  --border-subtle: rgba(44, 48, 46, 0.15);
+  --border-glow: rgba(29, 120, 116, 0.45);
+  --text-primary: #1f2421;
+  --text-secondary: #4a5550;
+  --text-muted: #717d77;
   --accent-cyan: #1d7874;
   --accent-amber: #c86d51;
   --accent-violet: #6b5b95;
-  --accent-emerald: #477952;
-  --accent-rose: #b84a5b;
-  --globe-bg: #eae5d9;
-  --globe-ocean: #d3dfdc;
-  --globe-land: #a7bfa8;
-  --globe-glow: #c86d51;
+  --accent-emerald: #386641;
+  --accent-rose: #a4384a;
 }
 
 * {
@@ -106,7 +98,7 @@ html, body {
   padding: 8px 18px;
   border-radius: 999px;
   border: 1px solid var(--border-subtle);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
   pointer-events: auto;
 }
 

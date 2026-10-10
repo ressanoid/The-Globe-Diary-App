@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import nightMapUrl from './assets/earth-night.jpg';
+import dayMapUrl from './assets/earth-blue-marble.jpg';
 
 export class GlobeScene {
   constructor(containerElement, onPinClickCallback) {
@@ -13,7 +15,7 @@ export class GlobeScene {
       0.1,
       1000
     );
-    this.camera.position.set(0, 0, 260);
+    this.camera.position.set(0, 0, 250);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -23,10 +25,10 @@ export class GlobeScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
-    this.controls.minDistance = 140;
+    this.controls.minDistance = 120;
     this.controls.maxDistance = 450;
     this.controls.autoRotate = true;
-    this.controls.autoRotateSpeed = 0.4;
+    this.controls.autoRotateSpeed = 0.35;
 
     this.globeRadius = 80;
     this.pinsGroup = new THREE.Group();
@@ -37,6 +39,10 @@ export class GlobeScene {
     this.pinMeshes = [];
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
+
+    this.textureLoader = new THREE.TextureLoader();
+    this.nightTexture = this.textureLoader.load(nightMapUrl);
+    this.dayTexture = this.textureLoader.load(dayMapUrl);
 
     this.initLights();
     this.initGlobeMesh();
@@ -49,85 +55,31 @@ export class GlobeScene {
   }
 
   initLights() {
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
     this.scene.add(this.ambientLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    this.sunLight.position.set(150, 100, 200);
+    this.sunLight = new THREE.DirectionalLight(0xfff8e7, 1.1);
+    this.sunLight.position.set(160, 90, 180);
     this.scene.add(this.sunLight);
-  }
-
-  // Generate self-contained procedural Earth globe texture
-  generateEarthTexture(isNight = true) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 2048;
-    canvas.height = 1024;
-    const ctx = canvas.getContext('2d');
-
-    // Ocean background
-    ctx.fillStyle = isNight ? '#091326' : '#c9d8d6';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Approximate continent outlines using organic paths
-    ctx.fillStyle = isNight ? '#162846' : '#9bb89e';
-
-    // Continents procedural styling
-    const drawLand = (x, y, w, h, r = 20) => {
-      ctx.beginPath();
-      ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
-      ctx.fill();
-    };
-
-    // North America
-    drawLand(500, 320, 260, 160);
-    // South America
-    drawLand(680, 680, 160, 220);
-    // Eurasia
-    drawLand(1350, 320, 420, 180);
-    // Africa
-    drawLand(1100, 560, 210, 240);
-    // Australia
-    drawLand(1680, 720, 160, 110);
-    // Greenland / North Islands
-    drawLand(750, 160, 110, 70);
-
-    // Grid latitude / longitude lines for depth
-    ctx.strokeStyle = isNight ? 'rgba(0, 240, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= canvas.width; x += 128) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= canvas.height; y += 128) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
-    }
-
-    const texture = new THREE.CanvasTexture(canvas);
-    return texture;
   }
 
   initGlobeMesh() {
     const geometry = new THREE.SphereGeometry(this.globeRadius, 64, 64);
     this.globeMaterial = new THREE.MeshStandardMaterial({
-      map: this.generateEarthTexture(true),
-      roughness: 0.6,
-      metalness: 0.1
+      map: this.nightTexture,
+      roughness: 0.65,
+      metalness: 0.05
     });
 
     this.globeMesh = new THREE.Mesh(geometry, this.globeMaterial);
     this.scene.add(this.globeMesh);
 
-    // Subtle atmospheric glow ring
-    const atmosphereGeo = new THREE.SphereGeometry(this.globeRadius * 1.025, 48, 48);
+    // Glowing atmospheric rim
+    const atmosphereGeo = new THREE.SphereGeometry(this.globeRadius * 1.02, 48, 48);
     this.atmosphereMat = new THREE.MeshBasicMaterial({
       color: 0x00f0ff,
       transparent: true,
-      opacity: 0.15,
+      opacity: 0.16,
       side: THREE.BackSide
     });
     this.atmosphereMesh = new THREE.Mesh(atmosphereGeo, this.atmosphereMat);
@@ -189,19 +141,22 @@ export class GlobeScene {
   // Update theme ambiance
   setTheme(theme) {
     const isNight = theme === 'night';
-    this.globeMaterial.map = this.generateEarthTexture(isNight);
+    this.globeMaterial.map = isNight ? this.nightTexture : this.dayTexture;
     this.globeMaterial.needsUpdate = true;
 
     if (isNight) {
       this.atmosphereMat.color.setHex(0x00f0ff);
-      this.atmosphereMat.opacity = 0.15;
+      this.atmosphereMat.opacity = 0.16;
       this.starMat.opacity = 0.75;
-      this.ambientLight.intensity = 0.9;
+      this.ambientLight.intensity = 0.85;
+      this.sunLight.intensity = 1.1;
     } else {
-      this.atmosphereMat.color.setHex(0xc86d51);
+      // Soft, gentle daytime lighting (not harsh or blown-out)
+      this.atmosphereMat.color.setHex(0x5b7065);
       this.atmosphereMat.opacity = 0.08;
-      this.starMat.opacity = 0.1;
-      this.ambientLight.intensity = 1.3;
+      this.starMat.opacity = 0.15;
+      this.ambientLight.intensity = 0.95;
+      this.sunLight.intensity = 0.9;
     }
   }
 
@@ -212,7 +167,6 @@ export class GlobeScene {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Detect click on pins or celestial markers
     let startX = 0;
     let startY = 0;
 
@@ -223,7 +177,6 @@ export class GlobeScene {
 
     this.renderer.domElement.addEventListener('pointerup', (e) => {
       const diff = Math.hypot(e.clientX - startX, e.clientY - startY);
-      // Only register as click if user didn't drag/orbit
       if (diff < 5) {
         this.handleClick(e);
       }
@@ -256,7 +209,6 @@ export class GlobeScene {
     requestAnimationFrame(this.animate);
     this.controls.update();
 
-    // Gentle pulse animation for pin markers
     const time = Date.now() * 0.002;
     this.pinMeshes.forEach((mesh) => {
       if (mesh.userData?.pulseMesh) {
@@ -265,7 +217,6 @@ export class GlobeScene {
       }
     });
 
-    // Orbit Moon gently
     if (this.moonMesh) {
       this.moonMesh.rotation.y += 0.002;
     }
