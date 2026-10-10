@@ -25,12 +25,30 @@
         </div>
       </div>
 
+      <!-- Celestial Body Target Focus Tabs (Earth vs Moon) -->
+      <div class="focus-pill" id="celestial-target-controls">
+        <button class="target-btn active" data-target="earth">
+          <span>🌍</span>
+          <span>Earth</span>
+        </button>
+        <button class="target-btn" data-target="moon">
+          <span>🌕</span>
+          <span>Moon</span>
+        </button>
+      </div>
+
       <div class="header-controls">
         <!-- Recency Filter -->
         <div class="filter-pill" id="filter-controls">
           <button class="filter-btn active" data-filter="all">All Stories</button>
           <button class="filter-btn" data-filter="recent">Recent / Today</button>
         </div>
+
+        <!-- Reset View to User Location Button -->
+        <button id="reset-view-btn" class="view-btn" title="Reset View to My Location">
+          <span>📍</span>
+          <span>My Location</span>
+        </button>
 
         <!-- Compassionate Check-In Trigger -->
         <button id="checkin-btn" class="support-btn" title="You are not alone">
@@ -48,7 +66,7 @@
 
     <!-- Floating Navigation Hint -->
     <div class="navigation-hint">
-      <span>🖱️ Drag to rotate globe • Scroll to zoom • Click a pin to connect</span>
+      <span>🖱️ Drag to rotate active world • Scroll to zoom • Click a pin to connect</span>
     </div>
 
     <!-- Modals Container Mount -->

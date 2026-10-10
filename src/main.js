@@ -22,6 +22,30 @@ document.addEventListener('DOMContentLoaded', () => {
   const entries = store.getAllEntries();
   globe.renderEntries(entries);
 
+  // Focus Switcher: Earth vs Moon tabs at top
+  const targetBtns = document.querySelectorAll('.target-btn');
+  targetBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      targetBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.dataset.target;
+      globe.setFocusTarget(target);
+    });
+  });
+
+  // Reset View to User Location button
+  const resetBtn = document.getElementById('reset-view-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      // Set Earth active in tabs
+      targetBtns.forEach((b) => {
+        if (b.dataset.target === 'earth') b.classList.add('active');
+        else b.classList.remove('active');
+      });
+      globe.resetToUserLocation();
+    });
+  }
+
   // Filter controls (All vs Recent/Today)
   const filterBtns = document.querySelectorAll('.filter-btn');
   filterBtns.forEach((btn) => {
