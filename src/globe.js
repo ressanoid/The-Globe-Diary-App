@@ -29,7 +29,7 @@ export class GlobeScene {
     this.controls.minDistance = 120;
     this.controls.maxDistance = 450;
     this.controls.autoRotate = true;
-    this.controls.autoRotateSpeed = 0.35;
+    this.controls.autoRotateSpeed = 0.25;
 
     this.globeRadius = 80;
     this.pinsGroup = new THREE.Group();
@@ -47,7 +47,7 @@ export class GlobeScene {
     this.moonTexture = this.textureLoader.load(moonMapUrl);
 
     this.initLights();
-    this.initGlobeMesh();
+    this.initRealtimeEarthMesh();
     this.initStarfield();
     this.initCelestialSky();
     this.initEvents();
@@ -56,32 +56,96 @@ export class GlobeScene {
     this.animate();
   }
 
+  // Calculate real solar angle based on current UTC time
+  getSunDirection() {
+    const now = new Date();
+    // UTC hours in fractions
+    const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+    // At UTC 12:00, Sun is directly at Prime Meridian (lng 0)
+    const solarLongitude = ((12 - utcHours) / 24) * 360;
+    const rad = (solarLongitude * Math.PI) / 180;
+
+    // Approximate seasonal declination (~autumnal equinox / October)
+    const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
+    const declination = -23.44 * Math.cos(((2 * Math.PI) / 365) * (dayOfYear + 10)) * (Math.PI / 180);
+
+    const sunX = Math.cos(declination) * Math.sin(rad);
+    const sunY = Math.sin(declination);
+    const sunZ = Math.cos(declination) * Math.cos(rad);
+
+    return new THREE.Vector3(sunX, sunY, sunZ).normalize();
+  }
+
   initLights() {
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     this.scene.add(this.ambientLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff8e7, 1.2);
-    this.sunLight.position.set(160, 90, 180);
+    this.sunLight = new THREE.DirectionalLight(0xfff5ea, 1.4);
+    const sunDir = this.getSunDirection();
+    this.sunLight.position.copy(sunDir.clone().multiplyScalar(220));
     this.scene.add(this.sunLight);
   }
 
-  initGlobeMesh() {
+  initRealtimeEarthMesh() {
     const geometry = new THREE.SphereGeometry(this.globeRadius, 64, 64);
-    this.globeMaterial = new THREE.MeshStandardMaterial({
-      map: this.nightTexture,
-      roughness: 0.65,
-      metalness: 0.05
+
+    // Custom WebGL Shader blending Day Texture on sunlit side and Night Lights on dark side!
+    this.earthShaderMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        dayTexture: { value: this.dayTexture },
+        nightTexture: { value: this.nightTexture },
+        sunDirection: { value: this.getSunDirection() }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vWorldPosition;
+
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPos.xyz;
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D dayTexture;
+        uniform sampler2D nightTexture;
+        uniform vec3 sunDirection;
+
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vWorldPosition;
+
+        void main() {
+          vec3 norm = normalize(vWorldPosition);
+          // Dot product between surface normal and sun direction: 1 = full noon, -1 = full midnight
+          float sunDot = dot(norm, sunDirection);
+
+          // Smooth twilight terminator transition
+          float dayFactor = smoothstep(-0.15, 0.2, sunDot);
+
+          vec4 dayColor = texture2D(dayTexture, vUv);
+          vec4 nightColor = texture2D(nightTexture, vUv);
+
+          // Enhance night city lights brightness on the dark side
+          vec3 composite = mix(nightColor.rgb * 1.35, dayColor.rgb, dayFactor);
+
+          gl_FragColor = vec4(composite, 1.0);
+        }
+      `
     });
 
-    this.globeMesh = new THREE.Mesh(geometry, this.globeMaterial);
+    this.globeMesh = new THREE.Mesh(geometry, this.earthShaderMaterial);
     this.scene.add(this.globeMesh);
 
     // Glowing atmospheric rim
-    const atmosphereGeo = new THREE.SphereGeometry(this.globeRadius * 1.02, 48, 48);
+    const atmosphereGeo = new THREE.SphereGeometry(this.globeRadius * 1.018, 48, 48);
     this.atmosphereMat = new THREE.MeshBasicMaterial({
-      color: 0x00f0ff,
+      color: 0x4fa8d8,
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.18,
       side: THREE.BackSide
     });
     this.atmosphereMesh = new THREE.Mesh(atmosphereGeo, this.atmosphereMat);
@@ -108,7 +172,7 @@ export class GlobeScene {
       color: 0xffffff,
       size: 1.8,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.85
     });
 
     this.starfield = new THREE.Points(starGeo, this.starMat);
@@ -116,7 +180,6 @@ export class GlobeScene {
   }
 
   initCelestialSky() {
-    // 3D Realistic Textured Moon
     const moonGeo = new THREE.SphereGeometry(12, 32, 32);
     const moonMat = new THREE.MeshStandardMaterial({
       map: this.moonTexture,
@@ -128,7 +191,6 @@ export class GlobeScene {
     this.celestialGroup.add(this.moonMesh);
   }
 
-  // Convert GPS (lat, lng) to 3D Cartesian coordinates on sphere
   latLngToVector3(lat, lng, radius) {
     const phi = (90 - lat) * (Math.PI / 180);
     const theta = (lng + 180) * (Math.PI / 180);
@@ -140,23 +202,14 @@ export class GlobeScene {
     return new THREE.Vector3(x, y, z);
   }
 
-  // Update theme ambiance
   setTheme(theme) {
-    const isNight = theme === 'night';
-    this.globeMaterial.map = isNight ? this.nightTexture : this.dayTexture;
-    this.globeMaterial.needsUpdate = true;
-
-    if (isNight) {
+    // Theme adjusts UI warmth while real-time Day/Night terminator continues on Earth
+    if (theme === 'night') {
       this.atmosphereMat.color.setHex(0x00f0ff);
-      this.atmosphereMat.opacity = 0.16;
-      this.ambientLight.intensity = 0.9;
-      this.sunLight.intensity = 1.2;
+      this.atmosphereMat.opacity = 0.2;
     } else {
-      // Warm daytime Earth lighting against dark space
-      this.atmosphereMat.color.setHex(0x5ca0d3);
-      this.atmosphereMat.opacity = 0.15;
-      this.ambientLight.intensity = 1.1;
-      this.sunLight.intensity = 1.3;
+      this.atmosphereMat.color.setHex(0xc86d51);
+      this.atmosphereMat.opacity = 0.16;
     }
   }
 
@@ -209,6 +262,15 @@ export class GlobeScene {
     requestAnimationFrame(this.animate);
     this.controls.update();
 
+    // Periodically update solar angle to stay accurate in real-time
+    const sunDir = this.getSunDirection();
+    if (this.earthShaderMaterial) {
+      this.earthShaderMaterial.uniforms.sunDirection.value.copy(sunDir);
+    }
+    if (this.sunLight) {
+      this.sunLight.position.copy(sunDir.clone().multiplyScalar(220));
+    }
+
     const time = Date.now() * 0.002;
     this.pinMeshes.forEach((mesh) => {
       if (mesh.userData?.pulseMesh) {
@@ -217,7 +279,6 @@ export class GlobeScene {
       }
     });
 
-    // Orbit and rotate Moon gently
     if (this.moonMesh) {
       this.moonMesh.rotation.y += 0.003;
     }
