@@ -37,20 +37,25 @@ export class GlobeScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
-    this.controls.minDistance = 35;
-    this.controls.maxDistance = 500;
+    
+    // Sensible zoom limits: prevents clipping through Earth or zooming too far out
+    this.controls.minDistance = 115;
+    this.controls.maxDistance = 420;
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.25;
 
     this.activeFocusTarget = 'earth'; // 'earth' | 'moon'
 
     this.globeRadius = 80;
+    this.moonRadius = 18;
+
     this.pinsGroup = new THREE.Group();
     this.celestialGroup = new THREE.Group();
     this.scene.add(this.pinsGroup);
     this.scene.add(this.celestialGroup);
 
     this.pinMeshes = [];
+    this.moonPinMeshes = [];
     this.starMeshes = [];
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
@@ -58,7 +63,6 @@ export class GlobeScene {
     this.targetCameraPos = null;
     this.targetLookAt = null;
 
-    // Cache user location (defaults to Cairo if permission not granted)
     this.userCoords = { lat: 30.0444, lng: 31.2357 };
     this.detectUserLocation();
 
@@ -167,7 +171,6 @@ export class GlobeScene {
     });
 
     this.globeMesh = new THREE.Mesh(geometry, this.earthShaderMaterial);
-    // Align Prime Meridian (lng 0) properly with standard Three.js UV coordinates
     this.globeMesh.rotation.y = -Math.PI / 2;
     this.scene.add(this.globeMesh);
 
@@ -210,20 +213,34 @@ export class GlobeScene {
   }
 
   initCelestialSky() {
-    const moonGeo = new THREE.SphereGeometry(18, 32, 32);
+    // 3D Moon Group containing sphere and its own pins
+    this.moonGroup = new THREE.Group();
+    this.moonPosition = new THREE.Vector3(180, 80, -120);
+    this.moonGroup.position.copy(this.moonPosition);
+
+    const moonGeo = new THREE.SphereGeometry(this.moonRadius, 32, 32);
     const moonMat = new THREE.MeshStandardMaterial({
       map: this.moonTexture,
       roughness: 0.85
     });
     this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
-    // Position Moon in stable orbital position
-    this.moonPosition = new THREE.Vector3(180, 80, -120);
-    this.moonMesh.position.copy(this.moonPosition);
     this.moonMesh.userData = { isCelestial: true, type: 'moon', id: 'entry_moon_1' };
-    this.celestialGroup.add(this.moonMesh);
+    this.moonGroup.add(this.moonMesh);
+
+    // Subtle soft glow around moon
+    const moonGlowGeo = new THREE.SphereGeometry(this.moonRadius * 1.05, 32, 32);
+    const moonGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xfffbe6,
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.BackSide
+    });
+    this.moonGlowMesh = new THREE.Mesh(moonGlowGeo, moonGlowMat);
+    this.moonGroup.add(this.moonGlowMesh);
+
+    this.celestialGroup.add(this.moonGroup);
   }
 
-  // Exact Standard Equirectangular Projection to 3D Cartesian coordinates
   latLngToVector3(lat, lng, radius) {
     const latRad = lat * (Math.PI / 180);
     const lngRad = lng * (Math.PI / 180);
@@ -236,23 +253,37 @@ export class GlobeScene {
   }
 
   renderEntries(entries) {
+    // Clear Earth pins
     while (this.pinsGroup.children.length > 0) {
       this.pinsGroup.remove(this.pinsGroup.children[0]);
     }
     this.pinMeshes = [];
 
+    // Clear non-moon objects in celestialGroup
     for (let i = this.celestialGroup.children.length - 1; i >= 0; i--) {
       const child = this.celestialGroup.children[i];
-      if (child !== this.moonMesh) {
+      if (child !== this.moonGroup) {
         this.celestialGroup.remove(child);
       }
     }
+
+    // Clear moon whisper pins from moonGroup
+    for (let i = this.moonGroup.children.length - 1; i >= 0; i--) {
+      const child = this.moonGroup.children[i];
+      if (child !== this.moonMesh && child !== this.moonGlowMesh) {
+        this.moonGroup.remove(child);
+      }
+    }
+    this.moonPinMeshes = [];
     this.starMeshes = [];
+
+    let moonWhisperIndex = 0;
 
     entries.forEach((entry, index) => {
       const pinColor = FEELING_COLORS[entry.feeling] || FEELING_COLORS.default;
 
       if (entry.destination === 'earth' && entry.lat != null && entry.lng != null) {
+        // --- Earth Pin ---
         const pinGroup = new THREE.Group();
         const basePos = this.latLngToVector3(entry.lat, entry.lng, this.globeRadius);
 
@@ -292,7 +323,50 @@ export class GlobeScene {
 
         this.pinsGroup.add(pinGroup);
         this.pinMeshes.push(pinGroup);
+      } else if (entry.destination === 'moon') {
+        // --- Moon Whisper Pin (Placed directly onto the Moon's surface!) ---
+        const moonPinGroup = new THREE.Group();
+        // Disperse whispers across the visible surface of the moon
+        const theta = (moonWhisperIndex * 1.618) * Math.PI * 2;
+        const phi = Math.acos(0.2 + (moonWhisperIndex * 0.25) % 0.7);
+        moonWhisperIndex++;
+
+        const mx = this.moonRadius * Math.sin(phi) * Math.cos(theta);
+        const my = this.moonRadius * Math.cos(phi);
+        const mz = this.moonRadius * Math.sin(phi) * Math.sin(theta);
+
+        moonPinGroup.position.set(mx, my, mz);
+        moonPinGroup.lookAt(new THREE.Vector3(0, 0, 0));
+
+        // Moon beacon crystal
+        const moonBeaconGeo = new THREE.OctahedronGeometry(1.4);
+        const moonBeaconMat = new THREE.MeshBasicMaterial({ color: pinColor });
+        const moonBeacon = new THREE.Mesh(moonBeaconGeo, moonBeaconMat);
+        moonPinGroup.add(moonBeacon);
+
+        // Radiant halo ring
+        const mHaloGeo = new THREE.RingGeometry(1.0, 2.4, 16);
+        const mHaloMat = new THREE.MeshBasicMaterial({
+          color: 0xfffbe6,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.75
+        });
+        const mHalo = new THREE.Mesh(mHaloGeo, mHaloMat);
+        moonPinGroup.add(mHalo);
+
+        moonPinGroup.userData = {
+          entryId: entry.id,
+          isMoonWhisper: true,
+          pulseMesh: mHalo,
+          pulseOffset: index * 0.9,
+          timestamp: entry.timestamp
+        };
+
+        this.moonGroup.add(moonPinGroup);
+        this.moonPinMeshes.push(moonPinGroup);
       } else if (entry.destination === 'shooting-star') {
+        // --- Shooting Star Wish ---
         const starGroup = new THREE.Group();
         const pos = entry.starPosition || { x: -130, y: 100, z: -90 };
         starGroup.position.set(pos.x, pos.y, pos.z);
@@ -326,37 +400,42 @@ export class GlobeScene {
     });
   }
 
-  // --- Target Focus Switcher: Earth vs Moon ---
   setFocusTarget(target) {
     this.activeFocusTarget = target;
     this.controls.autoRotate = false;
 
     if (target === 'moon') {
-      // Zoom and center orbit controls on the Moon
-      this.targetLookAt = this.moonPosition.clone();
-      const offset = new THREE.Vector3(30, 20, 45);
+      // Re-center controls on Moon with tight comfortable zoom limits
+      this.controls.target.copy(this.moonPosition);
+      this.controls.minDistance = 32;
+      this.controls.maxDistance = 140;
+
+      const offset = new THREE.Vector3(25, 15, 45);
       this.targetCameraPos = this.moonPosition.clone().add(offset);
+      this.targetLookAt = this.moonPosition.clone();
     } else {
-      // Center back on Earth
+      // Center controls on Earth with calibrated zoom limits
+      this.controls.target.set(0, 0, 0);
+      this.controls.minDistance = 115;
+      this.controls.maxDistance = 420;
+
       this.targetLookAt = new THREE.Vector3(0, 0, 0);
       this.targetCameraPos = new THREE.Vector3(0, 0, 240);
     }
   }
 
-  // --- Reset View to User's GPS Location ---
   resetToUserLocation() {
-    this.activeFocusTarget = 'earth';
+    this.setFocusTarget('earth');
     this.controls.autoRotate = false;
     this.targetLookAt = new THREE.Vector3(0, 0, 0);
 
     const { lat, lng } = this.userCoords;
     const pinPos = this.latLngToVector3(lat, lng, this.globeRadius);
-    // Position camera facing directly at the user's location
     this.targetCameraPos = pinPos.clone().normalize().multiplyScalar(180);
   }
 
   focusOnCoordinates(lat, lng) {
-    this.activeFocusTarget = 'earth';
+    this.setFocusTarget('earth');
     this.controls.autoRotate = false;
     const pinPos = this.latLngToVector3(lat, lng, this.globeRadius);
     this.targetLookAt = new THREE.Vector3(0, 0, 0);
@@ -375,7 +454,7 @@ export class GlobeScene {
 
   setRecencyFilter(filter) {
     const oneDayAgo = Date.now() - 24 * 3600 * 1000;
-    const allMeshes = [...this.pinMeshes, ...this.starMeshes];
+    const allMeshes = [...this.pinMeshes, ...this.moonPinMeshes, ...this.starMeshes];
 
     allMeshes.forEach((mesh) => {
       if (filter === 'all') {
@@ -415,7 +494,12 @@ export class GlobeScene {
     this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
     this.raycaster.setFromCamera(this.mouse, this.camera);
-    const clickableTargets = [...this.pinMeshes, ...this.starMeshes, this.moonMesh];
+    const clickableTargets = [
+      ...this.pinMeshes,
+      ...this.moonPinMeshes,
+      ...this.starMeshes,
+      this.moonMesh
+    ];
     const intersects = this.raycaster.intersectObjects(clickableTargets, true);
 
     if (intersects.length > 0) {
@@ -427,8 +511,14 @@ export class GlobeScene {
         this.controls.autoRotate = false;
         const entryId = target.userData.entryId || target.userData.id;
 
+        // If clicking the Moon itself while looking at Earth, focus into the Moon
         if (target.userData.type === 'moon' || target === this.moonMesh) {
           this.setFocusTarget('moon');
+          // Update top tab UI if present
+          document.querySelectorAll('.target-btn').forEach((b) => {
+            if (b.dataset.target === 'moon') b.classList.add('active');
+            else b.classList.remove('active');
+          });
         }
 
         if (this.onPinClick) {
@@ -466,7 +556,7 @@ export class GlobeScene {
     }
 
     const time = Date.now() * 0.002;
-    const allPulsing = [...this.pinMeshes, ...this.starMeshes];
+    const allPulsing = [...this.pinMeshes, ...this.moonPinMeshes, ...this.starMeshes];
     allPulsing.forEach((mesh) => {
       if (mesh.userData?.pulseMesh) {
         const scale = 1 + Math.sin(time + mesh.userData.pulseOffset) * 0.3;
@@ -474,7 +564,8 @@ export class GlobeScene {
       }
     });
 
-    if (this.moonMesh) {
+    // Gentle moon spin when not in active user drag
+    if (this.moonMesh && this.activeFocusTarget !== 'moon') {
       this.moonMesh.rotation.y += 0.002;
     }
 
