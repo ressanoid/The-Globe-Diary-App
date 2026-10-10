@@ -5,14 +5,14 @@
   --border-radius-lg: 20px;
   --border-radius-md: 14px;
   --border-radius-sm: 8px;
-  --shadow-elevation: 0 16px 36px rgba(0, 0, 0, 0.35);
+  --shadow-elevation: 0 16px 36px rgba(0, 0, 0, 0.45);
 }
 
-/* Night Mode (Cosmic Sanctuary) */
+/* Night Mode (Cosmic Sanctuary) - Deep Midnight Space */
 body[data-theme="night"] {
-  --bg-primary: #070a13;
+  --bg-primary: #060913;
   --bg-secondary: rgba(15, 23, 42, 0.85);
-  --bg-glass: rgba(18, 24, 43, 0.8);
+  --bg-glass: rgba(18, 24, 43, 0.82);
   --border-subtle: rgba(255, 255, 255, 0.12);
   --border-glow: rgba(0, 240, 255, 0.35);
   --text-primary: #f8fafc;
@@ -25,14 +25,14 @@ body[data-theme="night"] {
   --accent-rose: #f43f5e;
 }
 
-/* Day Mode (Soft Natural Paper Journal - Calm, Muted, Never Harsh) */
+/* Day Mode (Warm Earthly Ambiance, but Space Stays Dark and Immersive) */
 body[data-theme="day"] {
-  --bg-primary: #e8e3d8;
-  --bg-secondary: rgba(232, 227, 216, 0.9);
-  --bg-glass: rgba(245, 241, 233, 0.88);
-  --border-subtle: rgba(44, 48, 46, 0.15);
-  --border-glow: rgba(29, 120, 116, 0.45);
-  --text-primary: #1f2421;
+  --bg-primary: #0a0d14; /* Space stays dark and cosmic */
+  --bg-secondary: rgba(38, 43, 54, 0.88);
+  --bg-glass: rgba(248, 246, 240, 0.92); /* UI controls turn to warm, light paper */
+  --border-subtle: rgba(200, 109, 81, 0.25);
+  --border-glow: rgba(200, 109, 81, 0.55);
+  --text-primary: #1f2421; /* Warm dark text inside light cards */
   --text-secondary: #4a5550;
   --text-muted: #717d77;
   --accent-cyan: #1d7874;
@@ -56,7 +56,7 @@ html, body {
   font-family: var(--font-family);
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  transition: background-color 0.5s ease, color 0.5s ease;
+  transition: background-color 0.5s ease;
 }
 
 #app {
@@ -98,8 +98,9 @@ html, body {
   padding: 8px 18px;
   border-radius: 999px;
   border: 1px solid var(--border-subtle);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   pointer-events: auto;
+  color: var(--text-primary);
 }
 
 .brand-icon {
@@ -110,6 +111,7 @@ html, body {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
 .brand-text .tagline {
@@ -151,6 +153,11 @@ html, body {
 .filter-btn.active {
   background: var(--text-primary);
   color: var(--bg-primary);
+}
+
+body[data-theme="day"] .filter-btn.active {
+  background: var(--accent-amber);
+  color: #ffffff;
 }
 
 .theme-toggle-btn, .support-btn {
@@ -210,6 +217,11 @@ html, body {
   transition: var(--transition-smooth);
 }
 
+body[data-theme="day"] .fab-btn {
+  background: linear-gradient(135deg, var(--accent-amber), #df7a5e);
+  box-shadow: 0 10px 28px rgba(200, 109, 81, 0.4);
+}
+
 .fab-btn:hover {
   transform: translateY(-3px) scale(1.02);
   box-shadow: 0 14px 36px rgba(0, 240, 255, 0.5);
@@ -227,16 +239,16 @@ html, body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
-  background: var(--bg-glass);
+  background: rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   padding: 6px 16px;
   border-radius: 999px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: #94a3b8;
   pointer-events: none;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 /* Responsive */

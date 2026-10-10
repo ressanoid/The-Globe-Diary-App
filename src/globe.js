@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import nightMapUrl from './assets/earth-night.jpg';
 import dayMapUrl from './assets/earth-blue-marble.jpg';
+import moonMapUrl from './assets/moon.jpg';
 
 export class GlobeScene {
   constructor(containerElement, onPinClickCallback) {
@@ -43,6 +44,7 @@ export class GlobeScene {
     this.textureLoader = new THREE.TextureLoader();
     this.nightTexture = this.textureLoader.load(nightMapUrl);
     this.dayTexture = this.textureLoader.load(dayMapUrl);
+    this.moonTexture = this.textureLoader.load(moonMapUrl);
 
     this.initLights();
     this.initGlobeMesh();
@@ -55,10 +57,10 @@ export class GlobeScene {
   }
 
   initLights() {
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     this.scene.add(this.ambientLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff8e7, 1.1);
+    this.sunLight = new THREE.DirectionalLight(0xfff8e7, 1.2);
     this.sunLight.position.set(160, 90, 180);
     this.scene.add(this.sunLight);
   }
@@ -88,7 +90,7 @@ export class GlobeScene {
 
   initStarfield() {
     const starGeo = new THREE.BufferGeometry();
-    const starCount = 1200;
+    const starCount = 1400;
     const positions = new Float32Array(starCount * 3);
 
     for (let i = 0; i < starCount * 3; i += 3) {
@@ -106,7 +108,7 @@ export class GlobeScene {
       color: 0xffffff,
       size: 1.8,
       transparent: true,
-      opacity: 0.75
+      opacity: 0.8
     });
 
     this.starfield = new THREE.Points(starGeo, this.starMat);
@@ -114,11 +116,11 @@ export class GlobeScene {
   }
 
   initCelestialSky() {
-    // 3D Moon Mesh
-    const moonGeo = new THREE.SphereGeometry(10, 32, 32);
+    // 3D Realistic Textured Moon
+    const moonGeo = new THREE.SphereGeometry(12, 32, 32);
     const moonMat = new THREE.MeshStandardMaterial({
-      color: 0xe0e6ed,
-      roughness: 0.8
+      map: this.moonTexture,
+      roughness: 0.85
     });
     this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
     this.moonMesh.position.set(160, 90, -110);
@@ -147,16 +149,14 @@ export class GlobeScene {
     if (isNight) {
       this.atmosphereMat.color.setHex(0x00f0ff);
       this.atmosphereMat.opacity = 0.16;
-      this.starMat.opacity = 0.75;
-      this.ambientLight.intensity = 0.85;
-      this.sunLight.intensity = 1.1;
+      this.ambientLight.intensity = 0.9;
+      this.sunLight.intensity = 1.2;
     } else {
-      // Soft, gentle daytime lighting (not harsh or blown-out)
-      this.atmosphereMat.color.setHex(0x5b7065);
-      this.atmosphereMat.opacity = 0.08;
-      this.starMat.opacity = 0.15;
-      this.ambientLight.intensity = 0.95;
-      this.sunLight.intensity = 0.9;
+      // Warm daytime Earth lighting against dark space
+      this.atmosphereMat.color.setHex(0x5ca0d3);
+      this.atmosphereMat.opacity = 0.15;
+      this.ambientLight.intensity = 1.1;
+      this.sunLight.intensity = 1.3;
     }
   }
 
@@ -217,8 +217,9 @@ export class GlobeScene {
       }
     });
 
+    // Orbit and rotate Moon gently
     if (this.moonMesh) {
-      this.moonMesh.rotation.y += 0.002;
+      this.moonMesh.rotation.y += 0.003;
     }
 
     this.renderer.render(this.scene, this.camera);
