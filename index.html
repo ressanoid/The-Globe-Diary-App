@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Globe Diary — You Are Not Alone</title>
+  <meta name="description" content="An interactive global 3D diary connecting human reflections across the world.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body data-theme="night">
+  <div id="app">
+    <!-- 3D Canvas Mount -->
+    <div id="globe-container"></div>
+
+    <!-- Top Navigation & Controls Bar -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">🌍</div>
+        <div class="brand-text">
+          <h1>The Globe Diary</h1>
+          <p class="tagline">You are not alone in this world</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <!-- Recency Filter -->
+        <div class="filter-pill" id="filter-controls">
+          <button class="filter-btn active" data-filter="all">All Stories</button>
+          <button class="filter-btn" data-filter="recent">Recent / Today</button>
+        </div>
+
+        <!-- Day / Night Ambiance Switcher -->
+        <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle Ambiance">
+          <span class="theme-icon">🌙</span>
+          <span class="theme-label">Night Cosmos</span>
+        </button>
+
+        <!-- Compassionate Check-In Trigger -->
+        <button id="checkin-btn" class="support-btn" title="You are not alone">
+          <span class="heart-pulse">💙</span>
+          <span>Check In</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Floating Action Button for Composing -->
+    <button id="compose-fab" class="fab-btn" aria-label="Write a diary reflection">
+      <span class="fab-icon">+</span>
+      <span class="fab-text">Share Reflection</span>
+    </button>
+
+    <!-- Floating Navigation Hint -->
+    <div class="navigation-hint">
+      <span>🖱️ Drag to rotate globe • Scroll to zoom • Click a pin to connect</span>
+    </div>
+
+    <!-- Modals Container Mount -->
+    <div id="modals-root"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
