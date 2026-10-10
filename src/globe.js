@@ -4,6 +4,17 @@ import nightMapUrl from './assets/earth-night.jpg';
 import dayMapUrl from './assets/earth-blue-marble.jpg';
 import moonMapUrl from './assets/moon.jpg';
 
+// Color map for feelings/moods
+const FEELING_COLORS = {
+  Hopeful: 0xffb347,     // Warm amber / gold
+  Peaceful: 0x10b981,    // Emerald calm
+  Calm: 0x06b6d4,        // Cyan tranquility
+  Struggling: 0xa855f7,  // Soft violet
+  Overwhelmed: 0xf43f5e, // Rose / pink
+  Grateful: 0x3b82f6,    // True blue
+  default: 0x00f0ff      // Glowing electric cyan
+};
+
 export class GlobeScene {
   constructor(containerElement, onPinClickCallback) {
     this.container = containerElement;
@@ -38,6 +49,7 @@ export class GlobeScene {
     this.scene.add(this.celestialGroup);
 
     this.pinMeshes = [];
+    this.starMeshes = [];
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
 
@@ -56,16 +68,12 @@ export class GlobeScene {
     this.animate();
   }
 
-  // Calculate real solar angle based on current UTC time
   getSunDirection() {
     const now = new Date();
-    // UTC hours in fractions
     const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
-    // At UTC 12:00, Sun is directly at Prime Meridian (lng 0)
     const solarLongitude = ((12 - utcHours) / 24) * 360;
     const rad = (solarLongitude * Math.PI) / 180;
 
-    // Approximate seasonal declination (~autumnal equinox / October)
     const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
     const declination = -23.44 * Math.cos(((2 * Math.PI) / 365) * (dayOfYear + 10)) * (Math.PI / 180);
 
@@ -89,7 +97,6 @@ export class GlobeScene {
   initRealtimeEarthMesh() {
     const geometry = new THREE.SphereGeometry(this.globeRadius, 64, 64);
 
-    // Custom WebGL Shader blending Day Texture on sunlit side and Night Lights on dark side!
     this.earthShaderMaterial = new THREE.ShaderMaterial({
       uniforms: {
         dayTexture: { value: this.dayTexture },
@@ -120,18 +127,13 @@ export class GlobeScene {
 
         void main() {
           vec3 norm = normalize(vWorldPosition);
-          // Dot product between surface normal and sun direction: 1 = full noon, -1 = full midnight
           float sunDot = dot(norm, sunDirection);
-
-          // Smooth twilight terminator transition
           float dayFactor = smoothstep(-0.15, 0.2, sunDot);
 
           vec4 dayColor = texture2D(dayTexture, vUv);
           vec4 nightColor = texture2D(nightTexture, vUv);
 
-          // Enhance night city lights brightness on the dark side
           vec3 composite = mix(nightColor.rgb * 1.35, dayColor.rgb, dayFactor);
-
           gl_FragColor = vec4(composite, 1.0);
         }
       `
@@ -187,7 +189,7 @@ export class GlobeScene {
     });
     this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
     this.moonMesh.position.set(160, 90, -110);
-    this.moonMesh.userData = { isCelestial: true, type: 'moon', id: 'celestial-moon' };
+    this.moonMesh.userData = { isCelestial: true, type: 'moon', id: 'entry_moon_1' };
     this.celestialGroup.add(this.moonMesh);
   }
 
@@ -202,15 +204,119 @@ export class GlobeScene {
     return new THREE.Vector3(x, y, z);
   }
 
-  setTheme(theme) {
-    // Theme adjusts UI warmth while real-time Day/Night terminator continues on Earth
-    if (theme === 'night') {
-      this.atmosphereMat.color.setHex(0x00f0ff);
-      this.atmosphereMat.opacity = 0.2;
-    } else {
-      this.atmosphereMat.color.setHex(0xc86d51);
-      this.atmosphereMat.opacity = 0.16;
+  // --- Render Pins from Data Store ---
+  renderEntries(entries) {
+    // Clear existing pins
+    while (this.pinsGroup.children.length > 0) {
+      this.pinsGroup.remove(this.pinsGroup.children[0]);
     }
+    this.pinMeshes = [];
+
+    // Clear shooting stars from celestial group (preserve moon)
+    for (let i = this.celestialGroup.children.length - 1; i >= 0; i--) {
+      const child = this.celestialGroup.children[i];
+      if (child !== this.moonMesh) {
+        this.celestialGroup.remove(child);
+      }
+    }
+    this.starMeshes = [];
+
+    entries.forEach((entry, index) => {
+      const pinColor = FEELING_COLORS[entry.feeling] || FEELING_COLORS.default;
+
+      if (entry.destination === 'earth' && entry.lat != null && entry.lng != null) {
+        const pinGroup = new THREE.Group();
+        const basePos = this.latLngToVector3(entry.lat, entry.lng, this.globeRadius);
+
+        // Position on surface
+        pinGroup.position.copy(basePos);
+        pinGroup.lookAt(new THREE.Vector3(0, 0, 0));
+
+        // Core glowing beacon dot
+        const beaconGeo = new THREE.SphereGeometry(1.6, 16, 16);
+        const beaconMat = new THREE.MeshBasicMaterial({ color: pinColor });
+        const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
+        beaconMesh.position.set(0, 0, -1.8);
+        pinGroup.add(beaconMesh);
+
+        // Radiant expanding halo
+        const haloGeo = new THREE.RingGeometry(1.2, 3.2, 24);
+        const haloMat = new THREE.MeshBasicMaterial({
+          color: pinColor,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.65
+        });
+        const haloMesh = new THREE.Mesh(haloGeo, haloMat);
+        haloMesh.position.set(0, 0, -1.6);
+        pinGroup.add(haloMesh);
+
+        // Stem connecting to surface
+        const stemGeo = new THREE.CylinderGeometry(0.35, 0.35, 2.5, 8);
+        const stemMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+        const stemMesh = new THREE.Mesh(stemGeo, stemMat);
+        stemMesh.rotation.x = Math.PI / 2;
+        stemMesh.position.set(0, 0, -1.0);
+        pinGroup.add(stemMesh);
+
+        pinGroup.userData = {
+          entryId: entry.id,
+          pulseMesh: haloMesh,
+          pulseOffset: index * 0.85,
+          timestamp: entry.timestamp
+        };
+
+        this.pinsGroup.add(pinGroup);
+        this.pinMeshes.push(pinGroup);
+      } else if (entry.destination === 'shooting-star') {
+        // Celestial Shooting Star wish marker
+        const starGroup = new THREE.Group();
+        const pos = entry.starPosition || { x: -130, y: 100, z: -90 };
+        starGroup.position.set(pos.x, pos.y, pos.z);
+
+        const starCoreGeo = new THREE.OctahedronGeometry(2.8);
+        const starCoreMat = new THREE.MeshBasicMaterial({ color: pinColor });
+        const starCore = new THREE.Mesh(starCoreGeo, starCoreMat);
+        starGroup.add(starCore);
+
+        // Sparkle ring
+        const sparkleGeo = new THREE.RingGeometry(3, 4.5, 16);
+        const sparkleMat = new THREE.MeshBasicMaterial({
+          color: pinColor,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.7
+        });
+        const sparkleMesh = new THREE.Mesh(sparkleGeo, sparkleMat);
+        starGroup.add(sparkleMesh);
+
+        starGroup.userData = {
+          entryId: entry.id,
+          isCelestial: true,
+          pulseMesh: sparkleMesh,
+          pulseOffset: index * 1.1,
+          timestamp: entry.timestamp
+        };
+
+        this.celestialGroup.add(starGroup);
+        this.starMeshes.push(starGroup);
+      }
+    });
+  }
+
+  // Filter pins by recency (e.g. today / within last 24h)
+  setRecencyFilter(filter) {
+    const oneDayAgo = Date.now() - 24 * 3600 * 1000;
+    const allMeshes = [...this.pinMeshes, ...this.starMeshes];
+
+    allMeshes.forEach((mesh) => {
+      if (filter === 'all') {
+        mesh.visible = true;
+      } else {
+        const time = new Date(mesh.userData.timestamp).getTime();
+        mesh.visible = time >= oneDayAgo;
+      }
+    });
   }
 
   initEvents() {
@@ -241,18 +347,19 @@ export class GlobeScene {
     this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
     this.raycaster.setFromCamera(this.mouse, this.camera);
-    const clickableTargets = [...this.pinMeshes, this.moonMesh];
+    const clickableTargets = [...this.pinMeshes, ...this.starMeshes, this.moonMesh];
     const intersects = this.raycaster.intersectObjects(clickableTargets, true);
 
     if (intersects.length > 0) {
       let target = intersects[0].object;
-      while (target && !target.userData?.entryId && !target.userData?.isCelestial) {
+      while (target && !target.userData?.entryId && !target.userData?.id) {
         target = target.parent;
       }
       if (target && target.userData) {
         this.controls.autoRotate = false;
+        const entryId = target.userData.entryId || target.userData.id;
         if (this.onPinClick) {
-          this.onPinClick(target.userData.entryId || target.userData.id);
+          this.onPinClick(entryId);
         }
       }
     }
@@ -262,7 +369,6 @@ export class GlobeScene {
     requestAnimationFrame(this.animate);
     this.controls.update();
 
-    // Periodically update solar angle to stay accurate in real-time
     const sunDir = this.getSunDirection();
     if (this.earthShaderMaterial) {
       this.earthShaderMaterial.uniforms.sunDirection.value.copy(sunDir);
@@ -272,9 +378,10 @@ export class GlobeScene {
     }
 
     const time = Date.now() * 0.002;
-    this.pinMeshes.forEach((mesh) => {
+    const allPulsing = [...this.pinMeshes, ...this.starMeshes];
+    allPulsing.forEach((mesh) => {
       if (mesh.userData?.pulseMesh) {
-        const scale = 1 + Math.sin(time + mesh.userData.pulseOffset) * 0.22;
+        const scale = 1 + Math.sin(time + mesh.userData.pulseOffset) * 0.3;
         mesh.userData.pulseMesh.scale.set(scale, scale, scale);
       }
     });
