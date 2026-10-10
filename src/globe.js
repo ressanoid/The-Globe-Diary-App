@@ -41,7 +41,7 @@ export class GlobeScene {
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.25;
 
-    this.activeFocusTarget = 'earth'; // 'earth' | 'moon' | 'stars'
+    this.activeFocusTarget = 'earth';
 
     this.globeRadius = 80;
     this.moonRadius = 18;
@@ -62,7 +62,6 @@ export class GlobeScene {
     this.targetCameraPos = null;
     this.targetLookAt = null;
 
-    // Cluster center for shooting stars view
     this.starsClusterCenter = new THREE.Vector3(-140, 110, -90);
 
     this.userCoords = { lat: 30.0444, lng: 31.2357 };
@@ -91,11 +90,8 @@ export class GlobeScene {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude
           };
-          console.log('Detected GPS location:', this.userCoords);
         },
-        (err) => {
-          console.log('Using default reference location (Cairo):', err.message);
-        },
+        () => {},
         { timeout: 8000 }
       );
     }
@@ -252,14 +248,54 @@ export class GlobeScene {
     return new THREE.Vector3(x, y, z);
   }
 
+  // Helper to create a perfectly aligned aerodynamic shooting star
+  createAlignedShootingStar(color) {
+    const group = new THREE.Group();
+
+    // Direction vector of motion: moving along +X axis
+    // 1. Brilliant Star Core at the head
+    const headGeo = new THREE.SphereGeometry(2.0, 16, 16);
+    const headMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const headMesh = new THREE.Mesh(headGeo, headMat);
+    group.add(headMesh);
+
+    // 2. Surrounding Colored Aura
+    const auraGeo = new THREE.SphereGeometry(3.0, 16, 16);
+    const auraMat = new THREE.MeshBasicMaterial({
+      color: color,
+      transparent: true,
+      opacity: 0.65
+    });
+    const auraMesh = new THREE.Mesh(auraGeo, auraMat);
+    group.add(auraMesh);
+
+    // 3. Sleek Streamlined Tapering Tail trailing behind (-X axis)
+    const tailLength = 26;
+    const tailGeo = new THREE.ConeGeometry(2.4, tailLength, 16);
+    const tailMat = new THREE.MeshBasicMaterial({
+      color: color,
+      transparent: true,
+      opacity: 0.45
+    });
+    const tailMesh = new THREE.Mesh(tailGeo, tailMat);
+    // Align cone along X axis trailing behind the head
+    tailMesh.rotation.z = Math.PI / 2;
+    tailMesh.position.set(-tailLength / 2, 0, 0);
+    group.add(tailMesh);
+
+    // Rotate entire shooting star 30 degrees for dramatic celestial trajectory
+    group.rotation.z = -Math.PI / 6;
+
+    return { group, auraMesh };
+  }
+
   renderEntries(entries) {
-    // Clear Earth pins
+    // Clear groups
     while (this.pinsGroup.children.length > 0) {
       this.pinsGroup.remove(this.pinsGroup.children[0]);
     }
     this.pinMeshes = [];
 
-    // Clear Moon pins
     for (let i = this.moonGroup.children.length - 1; i >= 0; i--) {
       const child = this.moonGroup.children[i];
       if (child !== this.moonMesh && child !== this.moonGlowMesh) {
@@ -268,12 +304,15 @@ export class GlobeScene {
     }
     this.moonPinMeshes = [];
 
-    // Clear Shooting Stars
     while (this.shootingStarsGroup.children.length > 0) {
       this.shootingStarsGroup.remove(this.shootingStarsGroup.children[0]);
     }
     this.starMeshes = [];
 
+    // --- City Density & Clustered Offsets ---
+    // When multiple entries share a city (e.g. Cairo or Tokyo), offset them slightly
+    // in a micro-spiral so pins never stack into a messy clump!
+    const locationCounts = {};
     let moonWhisperIndex = 0;
     let starIndex = 0;
 
@@ -281,20 +320,33 @@ export class GlobeScene {
       const pinColor = FEELING_COLORS[entry.feeling] || FEELING_COLORS.default;
 
       if (entry.destination === 'earth' && entry.lat != null && entry.lng != null) {
-        // --- Earth Pin ---
+        const locKey = `${entry.lat.toFixed(2)}_${entry.lng.toFixed(2)}`;
+        const count = locationCounts[locKey] || 0;
+        locationCounts[locKey] = count + 1;
+
+        // Apply gentle micro-spiral offset for multiple entries in same city
+        let offsetLat = entry.lat;
+        let offsetLng = entry.lng;
+        if (count > 0) {
+          const angle = count * 1.8;
+          const dist = 0.9 * Math.sqrt(count);
+          offsetLat += Math.sin(angle) * dist;
+          offsetLng += Math.cos(angle) * dist;
+        }
+
         const pinGroup = new THREE.Group();
-        const basePos = this.latLngToVector3(entry.lat, entry.lng, this.globeRadius);
+        const basePos = this.latLngToVector3(offsetLat, offsetLng, this.globeRadius);
 
         pinGroup.position.copy(basePos);
         pinGroup.lookAt(new THREE.Vector3(0, 0, 0));
 
-        const beaconGeo = new THREE.SphereGeometry(1.8, 16, 16);
+        const beaconGeo = new THREE.SphereGeometry(1.7, 16, 16);
         const beaconMat = new THREE.MeshBasicMaterial({ color: pinColor });
         const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
         beaconMesh.position.set(0, 0, -2.0);
         pinGroup.add(beaconMesh);
 
-        const haloGeo = new THREE.RingGeometry(1.4, 3.4, 24);
+        const haloGeo = new THREE.RingGeometry(1.3, 3.2, 24);
         const haloMat = new THREE.MeshBasicMaterial({
           color: pinColor,
           side: THREE.DoubleSide,
@@ -305,7 +357,7 @@ export class GlobeScene {
         haloMesh.position.set(0, 0, -1.8);
         pinGroup.add(haloMesh);
 
-        const stemGeo = new THREE.CylinderGeometry(0.35, 0.35, 2.5, 8);
+        const stemGeo = new THREE.CylinderGeometry(0.3, 0.3, 2.4, 8);
         const stemMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
         const stemMesh = new THREE.Mesh(stemGeo, stemMat);
         stemMesh.rotation.x = Math.PI / 2;
@@ -322,7 +374,6 @@ export class GlobeScene {
         this.pinsGroup.add(pinGroup);
         this.pinMeshes.push(pinGroup);
       } else if (entry.destination === 'moon') {
-        // --- Moon Whisper Pin ---
         const moonPinGroup = new THREE.Group();
         const theta = (moonWhisperIndex * 1.618) * Math.PI * 2;
         const phi = Math.acos(0.2 + (moonWhisperIndex * 0.25) % 0.7);
@@ -361,12 +412,11 @@ export class GlobeScene {
         this.moonGroup.add(moonPinGroup);
         this.moonPinMeshes.push(moonPinGroup);
       } else if (entry.destination === 'shooting-star') {
-        // --- Shooting Star Wish Marker with Glowing Trail ---
-        const starGroup = new THREE.Group();
-        // Disperse shooting stars gently in outer orbit
-        const offsetX = (starIndex % 3) * 35 - 35;
-        const offsetY = Math.floor(starIndex / 3) * 30 - 15;
-        const offsetZ = (starIndex % 2) * 20 - 10;
+        const { group: starGroup, auraMesh } = this.createAlignedShootingStar(pinColor);
+
+        const offsetX = (starIndex % 4) * 45 - 65;
+        const offsetY = Math.floor(starIndex / 4) * 35 - 20;
+        const offsetZ = (starIndex % 2) * 25 - 12;
         starIndex++;
 
         const pos = entry.starPosition || {
@@ -376,39 +426,10 @@ export class GlobeScene {
         };
         starGroup.position.set(pos.x, pos.y, pos.z);
 
-        // Core star
-        const starCoreGeo = new THREE.OctahedronGeometry(3.2);
-        const starCoreMat = new THREE.MeshBasicMaterial({ color: pinColor });
-        const starCore = new THREE.Mesh(starCoreGeo, starCoreMat);
-        starGroup.add(starCore);
-
-        // Glowing trail tail
-        const tailGeo = new THREE.ConeGeometry(1.2, 12, 16);
-        const tailMat = new THREE.MeshBasicMaterial({
-          color: pinColor,
-          transparent: true,
-          opacity: 0.55
-        });
-        const tailMesh = new THREE.Mesh(tailGeo, tailMat);
-        tailMesh.rotation.z = Math.PI / 4;
-        tailMesh.position.set(-6, -6, 0);
-        starGroup.add(tailMesh);
-
-        // Sparkle ring
-        const sparkleGeo = new THREE.RingGeometry(3.2, 5.0, 16);
-        const sparkleMat = new THREE.MeshBasicMaterial({
-          color: 0xffffff,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.8
-        });
-        const sparkleMesh = new THREE.Mesh(sparkleGeo, sparkleMat);
-        starGroup.add(sparkleMesh);
-
         starGroup.userData = {
           entryId: entry.id,
           isCelestial: true,
-          pulseMesh: sparkleMesh,
+          pulseMesh: auraMesh,
           pulseOffset: index * 1.1,
           timestamp: entry.timestamp
         };
@@ -419,13 +440,11 @@ export class GlobeScene {
     });
   }
 
-  // --- Celestial Target Switcher: Earth | Moon | Stars ---
   setFocusTarget(target) {
     this.activeFocusTarget = target;
     this.controls.autoRotate = false;
 
     if (target === 'moon') {
-      // Focus Moon
       this.controls.target.copy(this.moonPosition);
       this.controls.minDistance = 32;
       this.controls.maxDistance = 140;
@@ -434,16 +453,14 @@ export class GlobeScene {
       this.targetCameraPos = this.moonPosition.clone().add(offset);
       this.targetLookAt = this.moonPosition.clone();
     } else if (target === 'stars') {
-      // Focus Shooting Stars cluster from an evocative perspective
       this.controls.target.copy(this.starsClusterCenter);
       this.controls.minDistance = 40;
       this.controls.maxDistance = 220;
 
-      const offset = new THREE.Vector3(50, 30, 80);
+      const offset = new THREE.Vector3(45, 25, 75);
       this.targetCameraPos = this.starsClusterCenter.clone().add(offset);
       this.targetLookAt = this.starsClusterCenter.clone();
     } else {
-      // Focus Earth
       this.controls.target.set(0, 0, 0);
       this.controls.minDistance = 115;
       this.controls.maxDistance = 420;
@@ -566,7 +583,6 @@ export class GlobeScene {
   animate() {
     requestAnimationFrame(this.animate);
 
-    // Smooth camera glide
     if (this.targetCameraPos) {
       this.camera.position.lerp(this.targetCameraPos, 0.06);
       if (this.camera.position.distanceTo(this.targetCameraPos) < 1.0) {
@@ -599,15 +615,13 @@ export class GlobeScene {
       }
     });
 
-    // Gentle rotation of celestial objects
     if (this.moonMesh && this.activeFocusTarget !== 'moon') {
       this.moonMesh.rotation.y += 0.002;
     }
 
-    // Drift shooting stars gently in orbit
+    // Glide shooting stars smoothly across orbit
     this.starMeshes.forEach((starMesh, idx) => {
-      starMesh.rotation.y += 0.004;
-      starMesh.position.y += Math.sin(time + idx) * 0.05;
+      starMesh.position.y += Math.sin(time + idx) * 0.08;
     });
 
     this.renderer.render(this.scene, this.camera);
