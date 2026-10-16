@@ -14,6 +14,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
   signOut,
   updateProfile
 } from 'firebase/auth';
@@ -66,6 +67,33 @@ export const isGoogleUser = (user) =>
 
 export const isEmailUser = (user) =>
   Boolean(user?.providerData?.some((p) => p.providerId === 'password'));
+
+/**
+ * True when an account still has to confirm its email address. Only
+ * email/password accounts can be unverified — Google always returns a verified
+ * address — so Google users never qualify.
+ */
+export const needsEmailVerification = (user) =>
+  Boolean(
+    user &&
+    !user.isAnonymous &&
+    !user.emailVerified &&
+    user.providerData?.some((p) => p.providerId === 'password')
+  );
+
+/**
+ * Re-read the profile from the server so `emailVerified` reflects a link the
+ * user just clicked in another tab. Falls back to the cached user on failure.
+ */
+export async function refreshUser(user = auth.currentUser) {
+  if (!user) return null;
+  try {
+    await user.reload();
+    return auth.currentUser;
+  } catch {
+    return user;
+  }
+}
 
 /** Subscribe to auth state changes. Returns an unsubscribe function. */
 export function onAuthChange(callback) {
@@ -140,6 +168,13 @@ export async function signUpWithEmail({ email, password, displayName }) {
   try {
     const created = await createUserWithEmailAndPassword(auth, email, password);
     if (displayName) await updateProfile(created.user, { displayName });
+    // Start email verification immediately, but never fail the sign-up if the
+    // mail cannot be sent — the account is valid and the link can be re-sent.
+    try {
+      await sendEmailVerification(created.user, { url: `${window.location.origin}/` });
+    } catch (error) {
+      console.warn('Could not send the verification email:', error?.code || error);
+    }
     return { user: created.user, upgraded: false, created: true };
   } catch (error) {
     // The email already belongs to an account — fall back to signing in with it.
@@ -184,6 +219,23 @@ export async function sendPasswordReset(email) {
   if (!ready()) throw new Error('Sign-in is unavailable: Firebase is not configured.');
   try {
     await sendPasswordResetEmail(auth, email, { url: `${window.location.origin}/` });
+    return { sent: true };
+  } catch (error) {
+    throw friendly(error);
+  }
+}
+
+/**
+ * Send (or re-send) the email-verification link for the signed-in account. The
+ * link returns to the current origin; Firebase's hosted action page applies the
+ * code before redirecting the user back into the app.
+ */
+export async function sendVerificationEmail(user = auth.currentUser) {
+  if (!ready()) throw new Error('Sign-in is unavailable: Firebase is not configured.');
+  if (!user) throw new Error('Sign in first to verify your email.');
+  if (user.emailVerified) return { alreadyVerified: true };
+  try {
+    await sendEmailVerification(user, { url: `${window.location.origin}/` });
     return { sent: true };
   } catch (error) {
     throw friendly(error);

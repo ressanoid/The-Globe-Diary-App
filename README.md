@@ -32,6 +32,7 @@ Sign-in is required to write — reflections are owned by your account and synce
 - ✅ **Google** sign-in
 - ✅ **Email / password** sign-up and sign-in
 - 🔑 **Forgot password?** Email users can request a reset link straight from the sign-in dialog. The link is configured to return them to the app itself rather than `firebaseapp.com`, and the confirmation is deliberately neutral so the form can't be used to discover which emails have accounts.
+- ✉️ **Email verification** — a verification link is sent automatically when someone signs up with email/password, and an unverified account sees a **Verify Email** action in the header (with resend). Verification is currently advisory: it informs the user and is shown in the UI, but it does not block reading or writing.
 - 🚫 **Anonymous sign-in is disabled** by design — every entry belongs to a real, recoverable account.
 
 ---

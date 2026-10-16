@@ -449,6 +449,29 @@ const authUi = await page.evaluate(() => ({
 check('auth controls rendered', authUi.controls);
 check('registered session shows the signed-in chip', authUi.signedInChip && authUi.signOutBtn);
 
+// The test account is created through the REST API, so its email is unverified.
+// The app must therefore offer to confirm the address.
+const verifyUi = await page.evaluate(() => {
+  const btn = document.getElementById('verify-email-btn');
+  return {
+    exists: !!btn,
+    label: (document.getElementById('verify-email-label')?.textContent || '').trim()
+  };
+});
+check('unverified email account is offered a "Verify Email" action',
+      verifyUi.exists && /verify email/i.test(verifyUi.label), verifyUi.label || 'button missing');
+
+// Requesting the link must report back and must not error.
+await page.click('#verify-email-btn');
+const verifySent = await page.waitForFunction(
+  () => /sent|already/i.test(document.getElementById('verify-email-label')?.textContent || ''),
+  { timeout: 20000 }
+).then(() => true).catch(() => false);
+const verifyLabelAfter = await page.evaluate(
+  () => (document.getElementById('verify-email-label')?.textContent || '').trim()
+);
+check('verification link request reports success', verifySent, verifyLabelAfter || 'no feedback');
+
 // Signing out must present the sign-in gate again — there is no anonymous
 // fallback session keeping the app connected.
 await page.click('#auth-signout-btn');

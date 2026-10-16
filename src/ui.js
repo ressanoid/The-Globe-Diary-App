@@ -6,6 +6,9 @@ import {
   signUpWithEmail,
   signInWithGoogle,
   sendPasswordReset,
+  sendVerificationEmail,
+  needsEmailVerification,
+  refreshUser,
   signOutCompletely,
   isRegistered,
   displayNameOf,
@@ -493,9 +496,12 @@ export class UIManager {
   initAuthControls() {
     this.renderAuthControls(currentUser());
     this.evaluateReviewerAccess(currentUser());
-    onAuthChange((user) => {
-      this.renderAuthControls(user);
-      this.evaluateReviewerAccess(user);
+    onAuthChange(async (user) => {
+      // A verification link is clicked in another tab, so re-read the profile to
+      // pick up `emailVerified` without needing a hard refresh.
+      const fresh = needsEmailVerification(user) ? await refreshUser(user) : user;
+      this.renderAuthControls(fresh);
+      this.evaluateReviewerAccess(fresh);
     });
   }
 
@@ -505,11 +511,18 @@ export class UIManager {
 
     if (isRegistered(user)) {
       const name = displayNameOf(user);
+      const unverified = needsEmailVerification(user);
       container.innerHTML = `
         <div class="auth-user" title="${this.escapeHtml(user.email || name)}">
           <span class="auth-avatar">${this.escapeHtml(initialOf(user))}</span>
           <span class="auth-name">${this.escapeHtml(name)}</span>
         </div>
+        ${unverified ? `
+        <button class="view-btn" id="verify-email-btn"
+                title="Confirm the email address on this account">
+          <span>✉️</span>
+          <span id="verify-email-label" aria-live="polite">Verify Email</span>
+        </button>` : ''}
         <button class="view-btn" id="auth-signout-btn" title="Sign out of your account">
           <span>⎋</span>
           <span>Sign Out</span>
@@ -519,6 +532,28 @@ export class UIManager {
         await signOutCompletely();
         // Sign-in is required again: re-present the same gate shown on load.
         if (!isRegistered(currentUser())) this.showAuthModal('signin');
+      });
+
+      // The verification link is only useful for an unconfirmed email account.
+      const verifyBtn = container.querySelector('#verify-email-btn');
+      const verifyLabel = container.querySelector('#verify-email-label');
+      verifyBtn?.addEventListener('click', async () => {
+        verifyBtn.disabled = true;
+        verifyBtn.title = '';
+        if (verifyLabel) verifyLabel.textContent = 'Sending…';
+        try {
+          const result = await sendVerificationEmail(user);
+          if (verifyLabel) {
+            verifyLabel.textContent = result.alreadyVerified ? 'Already verified' : 'Link sent ✓';
+          }
+        } catch (err) {
+          const message = err?.message || 'Could not send the verification email.';
+          if (verifyLabel) verifyLabel.textContent = 'Try again';
+          verifyBtn.title = message;
+          console.warn('Verification email failed:', message);
+        } finally {
+          verifyBtn.disabled = false;
+        }
       });
       return;
     }
