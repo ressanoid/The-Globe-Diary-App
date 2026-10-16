@@ -6,8 +6,14 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "e2e": "node scripts/e2e.mjs",
-    "verify:rules": "node scripts/verify-firestore.mjs"
+    "verify:rules": "node scripts/verify-firestore.mjs",
+    "seed:reviewer": "node scripts/seed-reviewer.mjs",
+    "cleanup:e2e": "node scripts/cleanup-e2e.mjs",
+    "probe:ai": "node scripts/probe-ai.mjs",
+    "probe:google": "node scripts/diag-google-signin.mjs",
+    "probe:auth-ui": "node scripts/diag-auth-ui.mjs"
   },
   "dependencies": {
     "firebase": "^13.0.0",
@@ -15,6 +21,7 @@
   },
   "devDependencies": {
     "playwright": "^1.64.1",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "vitest": "^3.2.4"
   }
 }

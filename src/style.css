@@ -963,3 +963,177 @@ body[data-theme="day"] .fab-btn {
     padding-right: 6px;
   }
 }
+
+/* --- Journal Import Modal --- */
+.import-textarea {
+  resize: vertical;
+  min-height: 130px;
+  line-height: 1.5;
+}
+
+.import-file {
+  padding: 9px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.import-file::file-selector-button {
+  margin-right: 12px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.import-file::file-selector-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.import-actions {
+  display: flex;
+}
+
+.split-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 240, 255, 0.1);
+  border: 1px solid var(--border-glow);
+  color: var(--text-primary);
+  padding: 11px 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.split-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(0, 240, 255, 0.18);
+}
+
+.split-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+  transform: none;
+}
+
+.engine-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+/* The author `display` above would otherwise beat the [hidden] attribute. */
+.engine-badge[hidden] {
+  display: none;
+}
+
+.engine-badge.engine-ai {
+  color: var(--accent-cyan);
+  border-color: rgba(0, 240, 255, 0.4);
+  background: rgba(0, 240, 255, 0.1);
+}
+
+.engine-badge.engine-fallback {
+  color: var(--accent-amber);
+  border-color: rgba(255, 179, 71, 0.4);
+  background: rgba(255, 179, 71, 0.1);
+}
+
+.import-preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.import-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.import-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 10px 0;
+}
+
+.import-moment {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--border-radius-sm);
+  padding: 12px 14px;
+}
+
+.import-moment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.import-moment-datelabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.import-remove-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.import-remove-btn:hover {
+  background: rgba(244, 63, 94, 0.16);
+  color: var(--accent-rose);
+}
+
+.import-moment-text,
+.import-moment-feeling {
+  font-size: 13.5px;
+}
+
+@media (max-width: 768px) {
+  .import-preview {
+    max-height: 260px;
+  }
+  .split-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

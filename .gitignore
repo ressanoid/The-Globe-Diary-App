@@ -6,3 +6,12 @@ node_modules/
 .npm-cache/
 dist/
 .tmp/
+
+# --- Local tooling / agent scaffolding (not part of the app) ---
+.DS_Store
+logs/
+.opencode/
+.claude/
+.agents/
+agent/
+skills-lock.json

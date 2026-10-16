@@ -17,6 +17,8 @@ rules_version = '2';
 //   - timestamp:    string   (required, ISO 8601)                         [immutable]
 //   - ownerUid:     string   (required, == creating user's uid)           [immutable]
 //   - starPosition: map      (optional, {x,y,z} numbers, shooting stars)  [immutable]
+//   - source:       string   (optional, 'composer' | 'import')            [immutable]
+//                            (absent on legacy/seed entries — treated as 'composer')
 //   - reactions:    map      (required) { notAlone:int, warmth:int, strength:int }
 //
 // Access model
@@ -45,6 +47,14 @@ service cloud.firestore {
 
     function isOwner(data) {
       return isAuthenticated() && data.ownerUid == request.auth.uid;
+    }
+
+    // True when the caller has a document in the `reviewers` collection
+    // (keyed by uid). Reviewer docs are seeded out-of-band by the project
+    // owner, so this is a read-only capability check for clients.
+    function isReviewer() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/reviewers/$(request.auth.uid));
     }
 
     function affectedKeys() {
@@ -80,7 +90,7 @@ service cloud.firestore {
       return data.keys().hasOnly([
           'id', 'author', 'text', 'feeling', 'destination',
           'locationName', 'lat', 'lng', 'timestamp', 'ownerUid',
-          'starPosition', 'reactions'
+          'starPosition', 'source', 'reactions'
         ])
         && data.keys().hasAll([
           'author', 'text', 'destination', 'locationName', 'timestamp', 'ownerUid', 'reactions'
@@ -88,6 +98,7 @@ service cloud.firestore {
         && data.author is string && data.author.size() > 0 && data.author.size() <= 80
         && data.text is string && data.text.size() > 0 && data.text.size() <= 5000
         && (!('feeling' in data) || (data.feeling is string && data.feeling.size() <= 40))
+        && (!('source' in data) || data.source in ['composer', 'import'])
         && data.destination in ['earth', 'moon', 'shooting-star']
         && data.locationName is string && data.locationName.size() <= 120
         && (!('lat' in data) || isEmptyOrValidNumber(data.lat, -90, 90))
@@ -105,6 +116,39 @@ service cloud.firestore {
              == totalReactions(resource.data.reactions) + 1;
     }
 
+    // ----- reviewRequests validators ---------------------------------
+    // Shared shape check for create/update. Optional fields (countryCode,
+    // response, responderUid, responderName, resolvedAt) are validated only
+    // when present, so a creator doesn't have to pre-fill empty strings and a
+    // reviewer may add them later.
+    function hasValidReviewRequestShape(data) {
+      return data.keys().hasOnly([
+          'entryId', 'ownerUid', 'author', 'target', 'countryCode',
+          'message', 'status', 'response', 'responderUid', 'responderName',
+          'createdAt', 'resolvedAt'
+        ])
+        && data.keys().hasAll([
+          'entryId', 'ownerUid', 'author', 'target', 'message', 'status', 'createdAt'
+        ])
+        && data.entryId is string && data.entryId.size() > 0 && data.entryId.size() <= 200
+        && data.ownerUid is string && data.ownerUid.size() > 0 && data.ownerUid.size() <= 128
+        && data.author is string && data.author.size() > 0 && data.author.size() <= 80
+        && data.target in ['doctor', 'country', 'admin']
+        && (!('countryCode' in data) || (data.countryCode is string && data.countryCode.size() <= 8))
+        && data.message is string && data.message.size() > 0 && data.message.size() <= 1000
+        && data.status in ['open', 'resolved']
+        && (!('response' in data) || (data.response is string && data.response.size() <= 2000))
+        && (!('responderUid' in data) || (data.responderUid is string && data.responderUid.size() <= 128))
+        && (!('responderName' in data) || (data.responderName is string && data.responderName.size() <= 80))
+        && data.createdAt is string && data.createdAt.size() >= 20 && data.createdAt.size() <= 40
+        && (!('resolvedAt' in data) || (data.resolvedAt is string && data.resolvedAt.size() <= 40));
+    }
+
+    // Fields a reviewer may NOT touch once a request exists.
+    function reviewRequestImmutableFields() {
+      return ['entryId', 'ownerUid', 'author', 'target', 'countryCode', 'message', 'createdAt'];
+    }
+
     // ===============================================================
     // Collection: entries
     // ===============================================================
@@ -116,8 +160,77 @@ service cloud.firestore {
                     && isValidReactionIncrement()
                     && areImmutableFieldsUnchanged([
                          'id', 'author', 'text', 'feeling', 'destination',
-                         'locationName', 'lat', 'lng', 'timestamp', 'ownerUid', 'starPosition'
+                         'locationName', 'lat', 'lng', 'timestamp', 'ownerUid', 'starPosition',
+                         'source'
                        ]);
+      allow delete: if false;
+    }
+
+    // ===============================================================
+    // Collection: reviewers  (seeded out-of-band by the project owner)
+    // ===============================================================
+    // Document ID: the reviewer's auth uid.
+    //   - role: 'doctor' | 'admin'
+    //
+    // A signed-in client may read its OWN document only, so the UI can decide
+    // whether to reveal the review queue. There are NO client writes: reviewer
+    // docs are seeded via the Admin SDK / CLI, which bypasses these rules.
+    match /reviewers/{reviewerUid} {
+      allow get: if isAuthenticated() && request.auth.uid == reviewerUid;
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // ===============================================================
+    // Collection: reviewRequests
+    // ===============================================================
+    // Document ID: generated "rr_<ts>_<rand>".
+    //
+    // Fields:
+    //   - entryId:       string  (required, 1..200)          [immutable]
+    //   - ownerUid:      string  (required, == creator uid)  [immutable]
+    //   - author:        string  (required, 1..80)           [immutable]
+    //   - target:        string  (required, 'doctor'|'country'|'admin') [immutable]
+    //   - countryCode:   string? (optional, 0..8)            [immutable]
+    //   - message:       string  (required, 1..1000)         [immutable]
+    //   - status:        string  (required, 'open'|'resolved')        [reviewer]
+    //   - response:      string? (optional, 0..2000)                  [reviewer]
+    //   - responderUid:  string? (optional, 0..128)                   [reviewer]
+    //   - responderName: string? (optional, 0..80)                    [reviewer]
+    //   - createdAt:     string  (required, ISO 8601)        [immutable]
+    //   - resolvedAt:    string? (optional, 0..40)                    [reviewer]
+    //
+    // Access model
+    //   - create : authenticated, ownerUid == auth.uid, shape valid
+    //   - get    : the owner, or any reviewer
+    //   - list   : the owner (constrained query), or any reviewer (unfiltered)
+    //   - update : reviewers ONLY, limited to the reviewer-mutable fields above
+    //   - delete : never
+    //
+    // QUERY-SHAPE TRAP (why get and list are declared separately):
+    //   For a `list` operation, Firestore evaluates the rule against the QUERY,
+    //   not individual documents. A rule that references `resource.data` is only
+    //   satisfiable when the client's query provably constrains that field
+    //   ("rules are not filters"). The reviewer queue lists EVERY request with
+    //   NO filter, so a rule shaped `resource.data.ownerUid == request.auth.uid
+    //   || isReviewer()` would fail for reviewers if `resource.data` were the
+    //   only path. Because `isReviewer()` is independent of `resource.data`, the
+    //   `list` rule below short-circuits to true for reviewers and their
+    //   unfiltered query passes. The author branch still references
+    //   `resource.data.ownerUid`, so the author MUST constrain their query with
+    //   `where('ownerUid', '==', <own uid>)`. `get` is a single-document read,
+    //   where `resource.data` is always available, so both branches work there.
+    match /reviewRequests/{requestId} {
+      allow get: if isReviewer()
+                 || (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
+      allow list: if isReviewer()
+                  || (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
+      allow create: if isAuthenticated()
+                    && hasValidReviewRequestShape(request.resource.data)
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isReviewer()
+                    && hasValidReviewRequestShape(request.resource.data)
+                    && areImmutableFieldsUnchanged(reviewRequestImmutableFields());
       allow delete: if false;
     }
   }

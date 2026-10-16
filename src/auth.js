@@ -1,8 +1,8 @@
 // --- Firebase Auth facade ---
-// Anonymous session is always available (the app needs *some* signed-in user
-// because Firestore rules require authentication). Registered sign-in methods
-// (email/password, Google) are linked onto that session so the user's existing
-// entries — keyed by `ownerUid` — stay theirs after they upgrade.
+// Sign-in is required: anonymous sign-in is disabled for this project, and the
+// Firestore rules require an authenticated user for BOTH reads and writes.
+// Users sign in with Google or email/password, so a signed-out visitor must go
+// through the sign-in gate before the app can connect or persist anything.
 
 import {
   GoogleAuthProvider,
@@ -12,8 +12,8 @@ import {
   linkWithPopup,
   linkWithCredential,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut,
-  signInAnonymously,
   updateProfile
 } from 'firebase/auth';
 import { auth, isFirebaseConfigured } from './firebase.js';
@@ -72,17 +72,54 @@ export function onAuthChange(callback) {
   return onAuthStateChanged(auth, (user) => callback(user));
 }
 
+/**
+ * Resolve as soon as a NON-anonymous (registered) user is signed in.
+ *
+ * Resolves immediately when a registered user already exists; otherwise it
+ * waits for the next auth state change that yields one. Rejects when Firebase
+ * auth is unavailable so callers never wait forever on a missing backend
+ * (mirrors the `ready()` guard used throughout this module).
+ *
+ * @returns {Promise<import('firebase/auth').User>}
+ */
+export function waitForRegisteredUser() {
+  if (!ready()) {
+    return Promise.reject(new Error('Sign-in is unavailable: Firebase is not configured.'));
+  }
+  if (isRegistered(auth.currentUser)) return Promise.resolve(auth.currentUser);
+
+  return new Promise((resolve, reject) => {
+    let unsubscribe = () => {};
+    const settle = (user) => {
+      if (!isRegistered(user)) return;
+      unsubscribe();
+      resolve(user);
+    };
+    try {
+      unsubscribe = onAuthStateChanged(auth, settle, (error) => {
+        unsubscribe();
+        reject(error);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 // --- Sign-in flows ---
 
 /**
  * Create an account (or sign in) with email + password.
- * Anonymous users are upgraded in place so their entries keep their uid.
+ * A legacy anonymous session (from an old localStorage token) is upgraded in
+ * place so the entries keyed to that uid stay theirs.
  */
 export async function signUpWithEmail({ email, password, displayName }) {
   if (!ready()) throw new Error('Sign-in is unavailable: Firebase is not configured.');
   const current = auth.currentUser;
   const credential = EmailAuthProvider.credential(email, password);
 
+  // Legacy browsers may still hold an old anonymous session; linking it (rather
+  // than discarding it) preserves the entries owned by that uid.
   if (current?.isAnonymous) {
     try {
       const linked = await linkWithCredential(current, credential);
@@ -95,6 +132,19 @@ export async function signUpWithEmail({ email, password, displayName }) {
   }
 
   if (current) await signOut(auth);
+
+  // No session to upgrade, so actually CREATE the account. (Without anonymous
+  // sessions a pure sign-in attempt could never create one — "Create Account"
+  // would always fail with "Incorrect email or password".)
+  try {
+    const created = await createUserWithEmailAndPassword(auth, email, password);
+    if (displayName) await updateProfile(created.user, { displayName });
+    return { user: created.user, upgraded: false, created: true };
+  } catch (error) {
+    // The email already belongs to an account — fall back to signing in with it.
+    if (error.code !== 'auth/email-already-in-use') throw friendly(error);
+  }
+
   try {
     const credentialOut = await signInWithEmailAndPassword(auth, email, password);
     if (displayName && !credentialOut.user.displayName) {
@@ -120,13 +170,15 @@ export async function signInWithEmail({ email, password }) {
 }
 
 /**
- * Sign in with Google. If the current session is anonymous we link the Google
- * credential so `ownerUid` (and therefore their entries) is preserved.
+ * Sign in with Google. A legacy anonymous session (from an old localStorage
+ * token) is linked so `ownerUid` (and therefore the entries) is preserved.
  */
 export async function signInWithGoogle() {
   if (!ready()) throw new Error('Sign-in is unavailable: Firebase is not configured.');
   const current = auth.currentUser;
 
+  // Legacy browsers may still hold an old anonymous session; linking it (rather
+  // than discarding it) preserves the entries owned by that uid.
   if (current?.isAnonymous) {
     try {
       const linked = await linkWithPopup(current, googleProvider);
@@ -155,15 +207,14 @@ export async function signInWithGoogle() {
 }
 
 /**
- * Sign out of a registered account while keeping the app usable:
- * drops back to a fresh anonymous session (Firestore rules require auth).
+ * Sign out completely. There is no anonymous fallback session: with sign-in
+ * required, the UI re-presents the sign-in gate after a successful sign-out.
  */
-export async function signOutToAnon() {
+export async function signOutCompletely() {
   if (!ready()) return;
   try {
     await signOut(auth);
-    await signInAnonymously(auth);
   } catch (error) {
-    console.warn('Sign-out fallback to anonymous failed:', error);
+    console.warn('Sign-out failed:', error);
   }
 }
