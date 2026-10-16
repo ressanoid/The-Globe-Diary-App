@@ -238,6 +238,16 @@ export class DataStore {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Re-establish the realtime listener after an auth change (e.g. signing out
+   * of an account re-attaches the stream under a new identity).
+   */
+  reconnect() {
+    if (this.mode !== 'firestore' || !auth?.currentUser) return false;
+    this._subscribeRealtime();
+    return true;
+  }
+
   // --- Internals ---
 
   _emit() {

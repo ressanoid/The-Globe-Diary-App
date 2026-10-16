@@ -1,6 +1,7 @@
 import { GlobeScene } from './globe.js';
 import { DataStore } from './store.js';
 import { UIManager } from './ui.js';
+import { onAuthChange } from './auth.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const container = document.getElementById('globe-container');
@@ -68,4 +69,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Connect to the backend (Firestore + anonymous auth), falling back to local.
   const mode = await store.init();
   console.log(`🌍 Globe Diary data mode: ${mode}`);
+
+  // Re-establish the realtime stream whenever the signed-in identity changes
+  // (sign-in / sign-out invalidate the session the listener was attached under).
+  // After a sign-out we must wait for the follow-up anonymous sign-in to land,
+  // so retry briefly until the store reports it re-attached.
+  onAuthChange(() => {
+    let attempts = 0;
+    const tryReconnect = () => {
+      if (store.reconnect() || ++attempts > 20) return;
+      setTimeout(tryReconnect, 250);
+    };
+    setTimeout(tryReconnect, 150);
+  });
 });

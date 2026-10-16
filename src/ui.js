@@ -1,5 +1,17 @@
 // --- The Globe Diary UI Manager & Modals ---
 
+import {
+  onAuthChange,
+  signInWithEmail,
+  signUpWithEmail,
+  signInWithGoogle,
+  signOutToAnon,
+  isRegistered,
+  displayNameOf,
+  initialOf,
+  currentUser
+} from './auth.js';
+
 export class UIManager {
   constructor(store, globe) {
     this.store = store;
@@ -10,6 +22,7 @@ export class UIManager {
 
     this.initCheckInButton();
     this.initComposeButton();
+    this.initAuthControls();
   }
 
   // --- 1. Author Journey Timeline Modal ---
@@ -273,6 +286,13 @@ export class UIManager {
     const feelingPills = backdrop.querySelectorAll('.feeling-pill');
     let selectedFeeling = '';
 
+    // Prefill the handle with the signed-in display name (if any)
+    const authorInput = document.getElementById('author-input');
+    const activeUser = currentUser();
+    if (authorInput && isRegistered(activeUser)) {
+      authorInput.value = displayNameOf(activeUser);
+    }
+
     // Feeling selection toggle
     feelingPills.forEach((pill) => {
       pill.addEventListener('click', () => {
@@ -385,6 +405,154 @@ export class UIManager {
       });
 
       closeModal();
+    });
+  }
+
+  // --- Account: sign in / signed-in identity ---
+  initAuthControls() {
+    this.renderAuthControls(currentUser());
+    onAuthChange((user) => this.renderAuthControls(user));
+  }
+
+  renderAuthControls(user) {
+    const container = document.getElementById('auth-controls');
+    if (!container) return;
+
+    if (isRegistered(user)) {
+      const name = displayNameOf(user);
+      container.innerHTML = `
+        <div class="auth-user" title="${this.escapeHtml(user.email || name)}">
+          <span class="auth-avatar">${this.escapeHtml(initialOf(user))}</span>
+          <span class="auth-name">${this.escapeHtml(name)}</span>
+        </div>
+        <button class="view-btn" id="auth-signout-btn" title="Sign out of your account">
+          <span>⎋</span>
+          <span>Sign Out</span>
+        </button>
+      `;
+      container.querySelector('#auth-signout-btn')?.addEventListener('click', async () => {
+        await signOutToAnon();
+      });
+      return;
+    }
+
+    container.innerHTML = `
+      <button class="view-btn" id="auth-signin-btn">
+        <span>🔐</span>
+        <span>Sign In</span>
+      </button>
+    `;
+    container.querySelector('#auth-signin-btn')
+      ?.addEventListener('click', () => this.showAuthModal('signin'));
+  }
+
+  showAuthModal(mode = 'signin') {
+    const isSignUp = mode === 'signup';
+
+    this.mountRoot.innerHTML = `
+      <div class="modal-backdrop" id="auth-modal-backdrop">
+        <div class="modal-card auth-card">
+          <button class="modal-close" id="auth-close-btn" aria-label="Close">&times;</button>
+
+          <div class="modal-header">
+            <div>
+              <h2 class="author-name">${isSignUp ? 'Create your account' : 'Welcome back'}</h2>
+              <p class="author-location">Your reflections stay yours, on every device</p>
+            </div>
+          </div>
+
+          <form id="auth-form" class="modal-content-scroll">
+            ${isSignUp ? `
+              <div class="form-group">
+                <label for="auth-name">Display name</label>
+                <input type="text" id="auth-name" class="form-control" placeholder="e.g. Nasser, StarSeeker" autocomplete="name" />
+              </div>` : ''}
+
+            <div class="form-group">
+              <label for="auth-email">Email</label>
+              <input type="email" id="auth-email" class="form-control" required autocomplete="email" placeholder="you@example.com" />
+            </div>
+
+            <div class="form-group">
+              <label for="auth-password">Password</label>
+              <input type="password" id="auth-password" class="form-control" required minlength="6"
+                     autocomplete="${isSignUp ? 'new-password' : 'current-password'}"
+                     placeholder="${isSignUp ? 'At least 6 characters' : 'Your password'}" />
+            </div>
+
+            <div id="auth-error" class="hint-text"></div>
+
+            <div class="composer-actions">
+              <button type="submit" class="submit-entry-btn">
+                <span>${isSignUp ? 'Create Account' : 'Sign In'}</span>
+                <span>✨</span>
+              </button>
+            </div>
+
+            <div class="auth-divider"><span>or</span></div>
+
+            <button type="button" class="google-btn" id="google-signin-btn">
+              <span class="google-mark">G</span>
+              <span>Continue with Google</span>
+            </button>
+
+            <p class="auth-switch">
+              ${isSignUp ? 'Already have an account?' : 'New here?'}
+              <button type="button" class="link-btn" id="auth-mode-toggle">
+                ${isSignUp ? 'Sign in' : 'Create one'}
+              </button>
+            </p>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const backdrop = document.getElementById('auth-modal-backdrop');
+    const closeBtn = document.getElementById('auth-close-btn');
+    const form = document.getElementById('auth-form');
+    const errorEl = document.getElementById('auth-error');
+
+    const closeModal = () => { this.mountRoot.innerHTML = ''; };
+
+    closeBtn.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
+
+    document.getElementById('auth-mode-toggle').addEventListener('click', () => {
+      this.showAuthModal(isSignUp ? 'signin' : 'signup');
+    });
+
+    const fail = (err) => {
+      errorEl.textContent = err?.message || 'Something went wrong. Please try again.';
+      errorEl.classList.add('error-text');
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.textContent = '';
+      errorEl.classList.remove('error-text');
+
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const displayName = document.getElementById('auth-name')?.value.trim() || '';
+
+      try {
+        if (isSignUp) await signUpWithEmail({ email, password, displayName });
+        else await signInWithEmail({ email, password });
+        closeModal();
+      } catch (err) {
+        fail(err);
+      }
+    });
+
+    document.getElementById('google-signin-btn').addEventListener('click', async () => {
+      errorEl.textContent = '';
+      errorEl.classList.remove('error-text');
+      try {
+        await signInWithGoogle();
+        closeModal();
+      } catch (err) {
+        fail(err);
+      }
     });
   }
 

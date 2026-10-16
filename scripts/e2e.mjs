@@ -126,7 +126,59 @@ const persisted = await page.evaluate(async (marker) => {
 check('backend reconnected after reload', persisted.mode === 'firestore', `mode=${persisted.mode}`);
 check('entries persisted across reload', persisted.found === true);
 
-// --- 5. Error assertions ---
+// --- 5. Auth UI ---
+const authUi = await page.evaluate(() => ({
+  controls: !!document.getElementById('auth-controls'),
+  signInBtn: !!document.getElementById('auth-signin-btn'),
+  signedInChip: !!document.querySelector('.auth-user')
+}));
+check('auth controls rendered', authUi.controls);
+check('anonymous session shows "Sign In"', authUi.signInBtn && !authUi.signedInChip);
+
+await page.click('#auth-signin-btn');
+await page.waitForSelector('#auth-form', { timeout: 5000 });
+
+const formSignIn = await page.evaluate(() => ({
+  email: !!document.getElementById('auth-email'),
+  password: !!document.getElementById('auth-password'),
+  name: !!document.getElementById('auth-name'),
+  google: !!document.getElementById('google-signin-btn'),
+  error: !!document.getElementById('auth-error'),
+  submit: document.querySelector('#auth-form .submit-entry-btn span')?.textContent?.trim()
+}));
+check('sign-in form has email + password + Google + error slot',
+      formSignIn.email && formSignIn.password && formSignIn.google &&
+      formSignIn.error && formSignIn.submit === 'Sign In');
+
+// Wrong password must show a friendly error, not crash.
+// (Run this while still in sign-in mode — a random email in sign-up mode
+//  would actually create an account.)
+await page.fill('#auth-email', `nosuchuser-${Date.now()}@example.com`);
+await page.fill('#auth-password', 'wrong-password-123');
+await page.click('#auth-form .submit-entry-btn');
+const authErrorShown = await page.waitForFunction(
+  () => (document.getElementById('auth-error')?.textContent || '').trim().length > 0,
+  { timeout: 8000 }
+).then(() => true).catch(() => false);
+check('bad credentials show a friendly error', authErrorShown);
+
+// Toggle to sign-up
+await page.click('#auth-mode-toggle');
+const formSignUp = await page.evaluate(() => ({
+  name: !!document.getElementById('auth-name'),
+  submit: document.querySelector('#auth-form .submit-entry-btn span')?.textContent?.trim()
+}));
+check('sign-up mode adds display-name field + "Create Account"',
+      formSignUp.name && formSignUp.submit === 'Create Account');
+
+await page.click('#auth-close-btn');
+const authClosed = await page.waitForFunction(
+  () => document.getElementById('modals-root').children.length === 0,
+  { timeout: 5000 }
+).then(() => true).catch(() => false);
+check('auth modal closes', authClosed);
+
+// --- 6. Error assertions ---
 check('no uncaught page errors', pageErrors.length === 0,
       pageErrors.length ? pageErrors[0] : '');
 check('no console errors', consoleErrors.length === 0,
