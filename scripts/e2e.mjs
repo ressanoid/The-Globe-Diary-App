@@ -472,6 +472,27 @@ check('sign-in form has email + password + Google + error slot',
       formSignIn.email && formSignIn.password && formSignIn.google &&
       formSignIn.error && formSignIn.submit === 'Sign In');
 
+// "Forgot password?" must be offered to email users...
+const forgotPresent = await page.evaluate(() => {
+  const btn = document.getElementById('forgot-password-btn');
+  return {
+    exists: !!btn,
+    row: !!document.querySelector('.auth-forgot-row'),
+    label: (btn?.textContent || '').trim()
+  };
+});
+check('sign-in form offers a "Forgot password?" link',
+      forgotPresent.exists && forgotPresent.row && /forgot password/i.test(forgotPresent.label));
+
+// ...and asking for one with no address typed must explain itself.
+await page.click('#forgot-password-btn');
+await page.waitForTimeout(600);
+const forgotEmpty = await page.evaluate(
+  () => (document.getElementById('auth-error')?.textContent || '').trim()
+);
+check('forgot password with no email asks for the address first',
+      /enter your email/i.test(forgotEmpty), forgotEmpty);
+
 // Wrong password must show a friendly error, not crash.
 // (Run this while still in sign-in mode — a random email in sign-up mode
 //  would actually create an account.)
@@ -484,6 +505,20 @@ const authErrorShown = await page.waitForFunction(
 ).then(() => true).catch(() => false);
 check('bad credentials show a friendly error', authErrorShown);
 
+// The unknown address is still in the field. Requesting a reset for it must NOT
+// reveal that no such account exists (otherwise the form becomes an email probe).
+await page.click('#forgot-password-btn');
+const forgotNeutral = await page.waitForFunction(
+  () => (document.getElementById('auth-error')?.textContent || '').trim().length > 0,
+  { timeout: 10000 }
+).then(() => true).catch(() => false);
+const forgotMessage = await page.evaluate(
+  () => (document.getElementById('auth-error')?.textContent || '').trim()
+);
+check('forgot password never reveals whether an account exists',
+      forgotNeutral && !/no account found|incorrect email/i.test(forgotMessage || ''),
+      forgotMessage || 'no message shown');
+
 // Toggle to sign-up
 await page.click('#auth-mode-toggle');
 const formSignUp = await page.evaluate(() => ({
@@ -492,6 +527,11 @@ const formSignUp = await page.evaluate(() => ({
 }));
 check('sign-up mode adds display-name field + "Create Account"',
       formSignUp.name && formSignUp.submit === 'Create Account');
+
+// A password reset only makes sense for an existing account, so the link is
+// sign-in only.
+const forgotInSignUp = await page.evaluate(() => !!document.getElementById('forgot-password-btn'));
+check('sign-up mode hides the "Forgot password?" link', !forgotInSignUp);
 
 await page.click('#auth-close-btn');
 const authClosed = await page.waitForFunction(

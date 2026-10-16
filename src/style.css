@@ -945,6 +945,11 @@ body[data-theme="day"] .fab-btn {
   text-decoration: underline;
 }
 
+.auth-forgot-row {
+  margin: 0 0 6px;
+  text-align: right;
+}
+
 .hint-text {
   font-size: 13px;
   min-height: 18px;

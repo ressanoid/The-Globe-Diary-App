@@ -13,6 +13,7 @@ import {
   linkWithCredential,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut,
   updateProfile
 } from 'firebase/auth';
@@ -168,6 +169,27 @@ export async function signInWithEmail({ email, password }) {
     throw friendly(error);
   }
 }
+
+/**
+ * Email a password-reset link to an email/password account.
+ *
+ * The action link points back at the CURRENT origin (localhost, Vercel, ...)
+ * instead of the default firebaseapp.com page, so the user lands back inside the
+ * app. That origin must be listed in the project's authorized domains.
+ *
+ * Callers should confirm neutrally ("if an account exists...") so the form
+ * cannot be used to discover which email addresses are registered.
+ */
+export async function sendPasswordReset(email) {
+  if (!ready()) throw new Error('Sign-in is unavailable: Firebase is not configured.');
+  try {
+    await sendPasswordResetEmail(auth, email, { url: `${window.location.origin}/` });
+    return { sent: true };
+  } catch (error) {
+    throw friendly(error);
+  }
+}
+
 
 /**
  * Sign in with Google. A legacy anonymous session (from an old localStorage

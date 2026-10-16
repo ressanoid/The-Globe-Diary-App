@@ -5,6 +5,7 @@ import {
   signInWithEmail,
   signUpWithEmail,
   signInWithGoogle,
+  sendPasswordReset,
   signOutCompletely,
   isRegistered,
   displayNameOf,
@@ -577,6 +578,11 @@ export class UIManager {
                      placeholder="${isSignUp ? 'At least 6 characters' : 'Your password'}" />
             </div>
 
+            ${isSignUp ? '' : `
+            <p class="auth-forgot-row">
+              <button type="button" class="link-btn" id="forgot-password-btn">Forgot password?</button>
+            </p>`}
+
             <div id="auth-error" class="hint-text"></div>
 
             <div class="composer-actions">
@@ -622,6 +628,41 @@ export class UIManager {
       errorEl.textContent = err?.message || 'Something went wrong. Please try again.';
       errorEl.classList.add('error-text');
     };
+
+    const notice = (message) => {
+      errorEl.textContent = message;
+      errorEl.classList.remove('error-text');
+    };
+
+    // "Forgot password?" reuses the address already typed above. Both the success
+    // copy and the unknown-account case are deliberately identical so the form
+    // cannot be used to discover which email addresses have accounts.
+    const forgotBtn = document.getElementById('forgot-password-btn');
+    if (forgotBtn) {
+      forgotBtn.addEventListener('click', async () => {
+        const emailEl = document.getElementById('auth-email');
+        const email = emailEl.value.trim();
+        if (!email) {
+          fail({ message: 'Enter your email address above first.' });
+          emailEl.focus();
+          return;
+        }
+        notice('');
+        forgotBtn.disabled = true;
+        try {
+          await sendPasswordReset(email);
+          notice('If an account exists for that email, a reset link is on its way.');
+        } catch (err) {
+          if (err?.code === 'auth/user-not-found') {
+            notice('If an account exists for that email, a reset link is on its way.');
+          } else {
+            fail(err);
+          }
+        } finally {
+          forgotBtn.disabled = false;
+        }
+      });
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
