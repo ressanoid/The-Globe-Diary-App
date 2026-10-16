@@ -371,8 +371,18 @@ export class UIManager {
       if (destination === 'earth') {
         this.globe.focusOnCoordinates(lat, lng);
       } else if (destination === 'moon') {
-        this.globe.zoomToMoon();
+        this.globe.setFocusTarget('moon');
+      } else if (destination === 'shooting-star') {
+        this.globe.setFocusTarget('stars');
       }
+
+      // Keep the celestial focus tabs in sync with the new camera target
+      const focusTarget = destination === 'moon'
+        ? 'moon'
+        : (destination === 'shooting-star' ? 'stars' : 'earth');
+      document.querySelectorAll('.target-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.target === focusTarget);
+      });
 
       closeModal();
     });
