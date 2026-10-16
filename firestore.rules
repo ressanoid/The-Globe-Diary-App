@@ -1,0 +1,124 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model — collection: `entries`
+// ===============================================================
+// Document ID: seed id (e.g. "entry_cairo_1") or generated "entry_<ts>_<rand>"
+//
+// Fields:
+//   - id:           string   (optional, mirrors the document id)          [immutable]
+//   - author:       string   (required, 1..80 chars)                      [immutable]
+//   - text:         string   (required, 1..5000 chars)                    [immutable]
+//   - feeling:      string   (optional, 0..40 chars)                      [immutable]
+//   - destination:  string   (required, 'earth' | 'moon' | 'shooting-star') [immutable]
+//   - locationName: string   (required, 0..120 chars)                     [immutable]
+//   - lat:          number?  (optional, -90..90)                          [immutable]
+//   - lng:          number?  (optional, -180..180)                        [immutable]
+//   - timestamp:    string   (required, ISO 8601)                         [immutable]
+//   - ownerUid:     string   (required, == creating user's uid)           [immutable]
+//   - starPosition: map      (optional, {x,y,z} numbers, shooting stars)  [immutable]
+//   - reactions:    map      (required) { notAlone:int, warmth:int, strength:int }
+//
+// Access model
+//   - read   : any authenticated user (the app signs in anonymously on load)
+//   - create : authenticated, schema-valid, ownerUid == auth.uid
+//   - update : authenticated, schema stays valid, only `reactions` may change,
+//              and the total reaction count may increase by exactly 1
+//              (i.e. anyone may send one unit of support)
+//   - delete : never
+//
+// Queries performed by the app:
+//   - read all entries  -> query(collection('entries'), orderBy('timestamp','desc'))
+//     (a plain collection read; no field filters are used)
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(data) {
+      return isAuthenticated() && data.ownerUid == request.auth.uid;
+    }
+
+    function affectedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isValidCount(value) {
+      return value is int && value >= 0 && value <= 1000000;
+    }
+
+    function isEmptyOrValidNumber(value, min, max) {
+      return value == null || (value is number && value >= min && value <= max);
+    }
+
+    function hasValidReactions(data) {
+      return data.reactions is map
+        && data.reactions.keys().hasAll(['notAlone', 'warmth', 'strength'])
+        && isValidCount(data.reactions.notAlone)
+        && isValidCount(data.reactions.warmth)
+        && isValidCount(data.reactions.strength);
+    }
+
+    function totalReactions(reactions) {
+      return reactions.notAlone + reactions.warmth + reactions.strength;
+    }
+
+    // Domain validator: enforced on BOTH create and update.
+    function isValidEntry(data) {
+      return data.keys().hasOnly([
+          'id', 'author', 'text', 'feeling', 'destination',
+          'locationName', 'lat', 'lng', 'timestamp', 'ownerUid',
+          'starPosition', 'reactions'
+        ])
+        && data.keys().hasAll([
+          'author', 'text', 'destination', 'locationName', 'timestamp', 'ownerUid', 'reactions'
+        ])
+        && data.author is string && data.author.size() > 0 && data.author.size() <= 80
+        && data.text is string && data.text.size() > 0 && data.text.size() <= 5000
+        && (!('feeling' in data) || (data.feeling is string && data.feeling.size() <= 40))
+        && data.destination in ['earth', 'moon', 'shooting-star']
+        && data.locationName is string && data.locationName.size() <= 120
+        && (!('lat' in data) || isEmptyOrValidNumber(data.lat, -90, 90))
+        && (!('lng' in data) || isEmptyOrValidNumber(data.lng, -180, 180))
+        && data.timestamp is string && data.timestamp.size() >= 20 && data.timestamp.size() <= 40
+        && data.ownerUid is string && data.ownerUid.size() > 0 && data.ownerUid.size() <= 128
+        && hasValidReactions(data);
+    }
+
+    // Only `reactions` may change, and by exactly +1 in total.
+    function isValidReactionIncrement() {
+      return affectedKeys().hasOnly(['reactions'])
+        && hasValidReactions(request.resource.data)
+        && totalReactions(request.resource.data.reactions)
+             == totalReactions(resource.data.reactions) + 1;
+    }
+
+    // ===============================================================
+    // Collection: entries
+    // ===============================================================
+    match /entries/{entryId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(request.resource.data) && isValidEntry(request.resource.data);
+      allow update: if isAuthenticated()
+                    && isValidEntry(request.resource.data)
+                    && isValidReactionIncrement()
+                    && areImmutableFieldsUnchanged([
+                         'id', 'author', 'text', 'feeling', 'destination',
+                         'locationName', 'lat', 'lng', 'timestamp', 'ownerUid', 'starPosition'
+                       ]);
+      allow delete: if false;
+    }
+  }
+}

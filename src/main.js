@@ -2,7 +2,7 @@ import { GlobeScene } from './globe.js';
 import { DataStore } from './store.js';
 import { UIManager } from './ui.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const container = document.getElementById('globe-container');
   const store = new DataStore();
 
@@ -18,9 +18,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize UI Manager
   ui = new UIManager(store, globe);
 
-  // Render initial entries from store onto globe
-  const entries = store.getAllEntries();
-  globe.renderEntries(entries);
+  // Render initial entries from the cache (seeds are available immediately)
+  globe.renderEntries(store.getAllEntries());
+
+  // Re-render live whenever entries change (Firestore realtime or local fallback)
+  store.subscribe((entries) => {
+    globe.renderEntries(entries);
+  });
 
   // Focus Switcher: Earth vs Moon tabs at top
   const targetBtns = document.querySelectorAll('.target-btn');
@@ -60,4 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.__globe = globe;
   window.__store = store;
   window.__ui = ui;
+
+  // Connect to the backend (Firestore + anonymous auth), falling back to local.
+  const mode = await store.init();
+  console.log(`🌍 Globe Diary data mode: ${mode}`);
 });

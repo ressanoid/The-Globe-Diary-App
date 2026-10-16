@@ -1,6 +1,28 @@
-// --- The Globe Diary Data Store & Seed Reflections ---
+// --- The Globe Diary Data Store ---
+// Primary: Cloud Firestore with real-time sync.
+// Fallback: localStorage (when Firebase is not configured or unreachable).
+//
+// The public API stays synchronous (reads served from an in-memory cache) so the
+// rest of the app keeps working, while writes are mirrored to Firestore and
+// applied optimistically to the cache.
+
+import {
+  collection,
+  doc,
+  setDoc,
+  getDocs,
+  onSnapshot,
+  updateDoc,
+  increment,
+  query,
+  orderBy
+} from 'firebase/firestore';
+import { signInAnonymously } from 'firebase/auth';
+import { db, auth, isFirebaseConfigured } from './firebase.js';
 
 const STORAGE_KEY = 'globe_diary_entries_v1';
+const ENTRIES_COLLECTION = 'entries';
+const REACTION_TYPES = ['notAlone', 'warmth', 'strength'];
 
 export const INITIAL_SEEDS = [
   {
@@ -103,70 +125,225 @@ export const INITIAL_SEEDS = [
   }
 ];
 
+// --- Pure helpers ---
+
+const nowIso = () => new Date().toISOString();
+
+const createId = () => `entry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const emptyReactions = () => ({ notAlone: 0, warmth: 0, strength: 0 });
+
+const newestFirst = (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+
+/** Coerce any raw record (seed, Firestore doc, or user input) into a complete entry. */
+const normalizeEntry = (raw) => ({
+  ...raw,
+  author: raw.author || 'Anonymous',
+  text: raw.text || '',
+  feeling: raw.feeling || '',
+  destination: raw.destination || 'earth',
+  locationName: raw.locationName || '',
+  lat: raw.lat ?? null,
+  lng: raw.lng ?? null,
+  timestamp: raw.timestamp || nowIso(),
+  reactions: { ...emptyReactions(), ...(raw.reactions || {}) }
+});
+
+/**
+ * Data store facade.
+ *
+ * Reads are synchronous against an in-memory cache. `init()` connects to
+ * Firestore (authenticating anonymously first), seeds sample data on an empty
+ * database, then streams live updates via `subscribe()`.
+ */
 export class DataStore {
   constructor() {
-    this.entries = this.loadEntries();
+    // Seed immediately so the globe has content before the network responds.
+    this.entries = INITIAL_SEEDS.map(normalizeEntry).sort(newestFirst);
+    this.listeners = new Set();
+    this.mode = 'local';
+    this._unsubscribeSnapshot = null;
   }
 
-  loadEntries() {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn('Storage read fallback to seeds:', e);
+  /** Connect to the backend. Safe to call once, after construction. */
+  async init() {
+    if (!isFirebaseConfigured || !db || !auth) {
+      this._initLocal();
+      return this.mode;
     }
-    // Initialize with seeds
-    this.saveEntries(INITIAL_SEEDS);
-    return [...INITIAL_SEEDS];
+
+    try {
+      await this._ensureAuth();
+      await this._seedIfEmpty();
+      this._subscribeRealtime();
+      this.mode = 'firestore';
+    } catch (error) {
+      console.warn('Firestore unavailable — using local store instead.', error);
+      this._initLocal();
+    }
+    return this.mode;
   }
 
-  saveEntries(entries) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-    } catch (e) {
-      console.warn('Storage write failed:', e);
-    }
-  }
+  // --- Reads (synchronous, cache-backed) ---
 
   getAllEntries() {
     return [...this.entries];
   }
 
   getEntryById(id) {
-    return this.entries.find((e) => e.id === id);
+    return this.entries.find((e) => e.id === id) || null;
   }
 
   getAuthorEntries(author) {
     return this.entries
-      .filter((e) => e.author.toLowerCase() === author.toLowerCase())
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      .filter((e) => e.author.toLowerCase() === String(author).toLowerCase())
+      .sort(newestFirst);
   }
 
+  // --- Writes (optimistic + persisted) ---
+
   addEntry(newEntry) {
-    const entry = {
+    const entry = normalizeEntry({
       ...newEntry,
-      id: newEntry.id || `entry_${Date.now()}`,
-      timestamp: newEntry.timestamp || new Date().toISOString(),
-      reactions: newEntry.reactions || { notAlone: 0, warmth: 0, strength: 0 }
-    };
-    this.entries.unshift(entry);
-    this.saveEntries(this.entries);
+      id: newEntry.id || createId(),
+      timestamp: newEntry.timestamp || nowIso()
+    });
+
+    this.entries = [entry, ...this.entries.filter((e) => e.id !== entry.id)].sort(newestFirst);
+    this._emit();
+    this._persistEntry(entry);
     return entry;
   }
 
   addReaction(entryId, reactionType) {
+    if (!REACTION_TYPES.includes(reactionType)) return null;
     const entry = this.getEntryById(entryId);
     if (!entry) return null;
-    if (!entry.reactions) {
-      entry.reactions = { notAlone: 0, warmth: 0, strength: 0 };
+
+    const updated = {
+      ...entry,
+      reactions: { ...entry.reactions, [reactionType]: (entry.reactions[reactionType] || 0) + 1 }
+    };
+    this.entries = this.entries.map((e) => (e.id === entryId ? updated : e));
+    this._emit();
+    this._persistReaction(entryId, reactionType);
+    return updated;
+  }
+
+  // --- Live updates ---
+
+  /** Register a listener for entry-set changes. Returns an unsubscribe fn. */
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  // --- Internals ---
+
+  _emit() {
+    const snapshot = this.getAllEntries();
+    this.listeners.forEach((listener) => {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        console.error('Store listener failed:', error);
+      }
+    });
+  }
+
+  async _ensureAuth() {
+    if (auth.currentUser) return auth.currentUser;
+    const credential = await signInAnonymously(auth);
+    return credential.user;
+  }
+
+  async _seedIfEmpty() {
+    const snapshot = await getDocs(collection(db, ENTRIES_COLLECTION));
+    if (!snapshot.empty) return;
+
+    const ownerUid = auth.currentUser?.uid || null;
+    await Promise.all(
+      INITIAL_SEEDS.map((seed) =>
+        setDoc(doc(db, ENTRIES_COLLECTION, seed.id), { ...normalizeEntry(seed), ownerUid })
+      )
+    );
+  }
+
+  _subscribeRealtime() {
+    if (this._unsubscribeSnapshot) this._unsubscribeSnapshot();
+
+    const entriesQuery = query(collection(db, ENTRIES_COLLECTION), orderBy('timestamp', 'desc'));
+    this._unsubscribeSnapshot = onSnapshot(
+      entriesQuery,
+      (snapshot) => {
+        this.entries = snapshot.docs
+          .map((docSnap) => normalizeEntry({ id: docSnap.id, ...docSnap.data() }))
+          .sort(newestFirst);
+        this._emit();
+      },
+      (error) => console.warn('Realtime subscription error:', error)
+    );
+  }
+
+  async _persistEntry(entry) {
+    if (this.mode !== 'firestore') {
+      this._saveLocal(this.entries);
+      return;
     }
-    entry.reactions[reactionType] = (entry.reactions[reactionType] || 0) + 1;
-    this.saveEntries(this.entries);
-    return entry;
+    try {
+      await setDoc(doc(db, ENTRIES_COLLECTION, entry.id), {
+        ...entry,
+        ownerUid: auth.currentUser?.uid || null
+      });
+    } catch (error) {
+      console.error('Failed to persist entry to Firestore:', error);
+    }
+  }
+
+  async _persistReaction(entryId, reactionType) {
+    if (this.mode !== 'firestore') {
+      this._saveLocal(this.entries);
+      return;
+    }
+    try {
+      await updateDoc(doc(db, ENTRIES_COLLECTION, entryId), {
+        [`reactions.${reactionType}`]: increment(1)
+      });
+    } catch (error) {
+      console.error('Failed to persist reaction to Firestore:', error);
+    }
+  }
+
+  // --- Local fallback ---
+
+  _initLocal() {
+    this.entries = this._loadLocal();
+    this.mode = 'local';
+    this._emit();
+  }
+
+  _loadLocal() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(normalizeEntry).sort(newestFirst);
+        }
+      }
+    } catch (error) {
+      console.warn('Storage read fallback to seeds:', error);
+    }
+    const seeds = INITIAL_SEEDS.map(normalizeEntry).sort(newestFirst);
+    this._saveLocal(seeds);
+    return seeds;
+  }
+
+  _saveLocal(entries) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    } catch (error) {
+      console.warn('Storage write failed:', error);
+    }
   }
 }
