@@ -16,3 +16,4 @@ logs/
 agent/
 skills-lock.json
 .vercel
+.gstack/

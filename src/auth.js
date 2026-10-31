@@ -95,6 +95,24 @@ export async function refreshUser(user = auth.currentUser) {
   }
 }
 
+/**
+ * Update the signed-in user's display name ("handle"). Persisted to the
+ * Firebase Auth profile so it survives reloads and travels with the account.
+ * Returns the updated user (or null when Firebase is not configured).
+ */
+export async function updateDisplayName(name) {
+  if (!ready()) throw new Error('Sign-in is unavailable: Firebase is not configured.');
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sign in first to edit your handle.');
+  const trimmed = String(name || '').trim();
+  if (trimmed.length === 0) throw new Error('Handle cannot be empty.');
+  if (trimmed.length > 40) throw new Error('Handle must be 40 characters or fewer.');
+  await updateProfile(user, { displayName: trimmed });
+  // Force a refresh so consumers reading auth.currentUser see the new name.
+  try { await user.reload(); } catch { /* best-effort */ }
+  return auth.currentUser;
+}
+
 /** Subscribe to auth state changes. Returns an unsubscribe function. */
 export function onAuthChange(callback) {
   if (!ready()) return () => {};

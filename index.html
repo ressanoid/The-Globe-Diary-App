@@ -19,11 +19,17 @@
 
     <!-- Top Navigation & Controls Bar -->
     <header class="app-header">
-      <div class="brand">
-        <div class="brand-icon">🌍</div>
-        <div class="brand-text">
-          <h1>The Globe Diary</h1>
-          <p class="tagline">You are not alone in this world</p>
+      <div class="header-left">
+        <button id="mobile-menu-btn" class="mobile-menu-btn" aria-label="Open settings menu" title="Settings">
+          <span>☰</span>
+        </button>
+
+        <div class="brand">
+          <div class="brand-icon">🌍</div>
+          <div class="brand-text">
+            <h1>The Globe Diary</h1>
+            <p class="tagline">You are not alone in this world</p>
+          </div>
         </div>
       </div>
 
@@ -42,6 +48,8 @@
           <span>Stars</span>
         </button>
       </div>
+
+      
 
       <div class="header-controls">
         <!-- Recency Filter -->
@@ -62,13 +70,6 @@
           <span>Import</span>
         </button>
 
-        <!-- Account: Sign In / Signed-in identity -->
-        <div class="auth-pill" id="auth-controls">
-          <button class="view-btn" id="auth-signin-btn">
-            <span>🔐</span>
-            <span>Sign In</span>
-          </button>
-        </div>
 
         <!-- Compassionate Check-In Trigger -->
         <button id="checkin-btn" class="support-btn" title="You are not alone">
@@ -88,6 +89,21 @@
     <div class="navigation-hint">
       <span>🖱️ Drag to rotate active world • Scroll to zoom • Click a pin to connect</span>
     </div>
+
+    <!-- Mobile settings menu (bottom sheet) -->
+    <div id="mobile-menu" class="mobile-menu" hidden>
+      <div class="mobile-menu-backdrop" id="mobile-menu-backdrop"></div>
+      <div class="mobile-menu-sheet">
+        <div class="mobile-menu-header">
+          <h3>Settings</h3>
+          <button class="modal-close" id="mobile-menu-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="mobile-menu-items" id="mobile-menu-items"></div>
+      </div>
+    </div>
+
+    <!-- Hidden auth controls (kept for compatibility; UI lives in the hamburger menu) -->
+    <div id="auth-controls" class="auth-pill" style="display:none" aria-hidden="true"></div>
 
     <!-- Modals Container Mount -->
     <div id="modals-root"></div>

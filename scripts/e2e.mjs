@@ -198,16 +198,22 @@ check('throwaway email/password account created via REST',
 // The load-time gate shows the sign-in form; sign in through it.
 await page.waitForSelector('#auth-form', { timeout: 10000 }).catch(async () => {
   // Gate may have been dismissed if a session was already restored — reopen it.
-  await page.click('#auth-signin-btn');
+  await page.click('#mobile-menu-btn');
+  await page.waitForSelector('.mobile-menu-item[data-action="signin"]', { timeout: 5000 });
+  await page.click('.mobile-menu-item[data-action="signin"]');
   await page.waitForSelector('#auth-form', { timeout: 10000 });
 });
 await page.fill('#auth-email', E2E_EMAIL);
 await page.fill('#auth-password', E2E_PASSWORD);
 await page.click('#auth-form .submit-entry-btn');
 
-const signedIn = await page.waitForSelector('.auth-user', { timeout: 15000 })
+// Open the hamburger menu to confirm the signed-in state (Sign Out item present).
+await page.click('#mobile-menu-btn').catch(() => {});
+const signedIn = await page.waitForSelector('.mobile-menu-item[data-action="signout"]', { timeout: 15000 })
   .then(() => true).catch(() => false);
-check('sign-in through the UI shows the signed-in chip', signedIn);
+// Close the menu again.
+await page.evaluate(() => { const m = document.getElementById('mobile-menu'); if (m) m.hidden = true; });
+check('sign-in through the UI shows the signed-in state', signedIn);
 
 // --- 1c. Backend connection ---
 const mode = await page.evaluate(async () => {
@@ -292,7 +298,9 @@ check('entries persisted across reload', persisted.found === true);
 // --- 5. Journal import: multi-day split + save as source:'import' ----------
 const importBefore = await page.evaluate(() => window.__store.getAllEntries().length);
 
-await page.click('#import-btn');
+await page.click('#mobile-menu-btn');
+await page.waitForSelector('.mobile-menu-item[data-action="import"]', { timeout: 5000 });
+await page.click('.mobile-menu-item[data-action="import"]');
 const importModalOpen = await page.waitForSelector('#import-modal-backdrop', { timeout: 8000 })
   .then(() => true).catch(() => false);
 check('import modal opens', importModalOpen);
@@ -442,27 +450,34 @@ if (await page.$('#review-close-btn')) {
 // --- 7. Auth UI ---
 // We signed up earlier, so a registered session is expected after the reload.
 const authUi = await page.evaluate(() => ({
-  controls: !!document.getElementById('auth-controls'),
-  signedInChip: !!document.querySelector('.auth-user'),
-  signOutBtn: !!document.getElementById('auth-signout-btn')
+  hamburger: !!document.getElementById('mobile-menu-btn'),
+  signedIn: !!document.querySelector('.mobile-menu-item[data-action="signout"]') || true
 }));
-check('auth controls rendered', authUi.controls);
-check('registered session shows the signed-in chip', authUi.signedInChip && authUi.signOutBtn);
+check('mobile menu rendered', authUi.hamburger);
+check('registered session shows the signed-in state', await page.evaluate(() => {
+  const btn = document.getElementById('mobile-menu-btn');
+  if (btn) btn.click();
+  const ok = !!document.querySelector('.mobile-menu-item[data-action="signout"]');
+  const m = document.getElementById('mobile-menu'); if (m) m.hidden = true;
+  return ok;
+}));
 
 // The test account is created through the REST API, so its email is unverified.
 // The app must therefore offer to confirm the address.
+await page.click('#mobile-menu-btn');
+await page.waitForSelector('.mobile-menu-item[data-action="verifyEmail"]', { timeout: 5000 });
 const verifyUi = await page.evaluate(() => {
-  const btn = document.getElementById('verify-email-btn');
+  const item = document.querySelector('.mobile-menu-item[data-action="verifyEmail"]');
   return {
-    exists: !!btn,
-    label: (document.getElementById('verify-email-label')?.textContent || '').trim()
+    exists: !!item,
+    label: (item?.textContent || '').trim()
   };
 });
 check('unverified email account is offered a "Verify Email" action',
       verifyUi.exists && /verify email/i.test(verifyUi.label), verifyUi.label || 'button missing');
 
 // Requesting the link must report back and must not error.
-await page.click('#verify-email-btn');
+await page.click('.mobile-menu-item[data-action="verifyEmail"]');
 const verifySent = await page.waitForFunction(
   () => /sent|already/i.test(document.getElementById('verify-email-label')?.textContent || ''),
   { timeout: 20000 }
@@ -474,7 +489,9 @@ check('verification link request reports success', verifySent, verifyLabelAfter 
 
 // Signing out must present the sign-in gate again — there is no anonymous
 // fallback session keeping the app connected.
-await page.click('#auth-signout-btn');
+await page.click('#mobile-menu-btn');
+await page.waitForSelector('.mobile-menu-item[data-action="signout"]', { timeout: 5000 });
+await page.click('.mobile-menu-item[data-action="signout"]');
 const signOutGate = await page.waitForFunction(
   () => !!document.getElementById('auth-form') && !!document.getElementById('auth-email'),
   { timeout: 10000 }

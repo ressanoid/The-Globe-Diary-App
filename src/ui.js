@@ -13,7 +13,8 @@ import {
   isRegistered,
   displayNameOf,
   initialOf,
-  currentUser
+  currentUser,
+  updateDisplayName
 } from './auth.js';
 import { isAiAvailable, splitDay } from './ai.js';
 import { splitIntoDays, saveMoments } from './import.js';
@@ -34,6 +35,7 @@ export class UIManager {
     this.initComposeButton();
     this.initImportButton();
     this.initAuthControls();
+    this.initMobileMenu();
   }
 
   // --- 1. Author Journey Timeline Modal ---
@@ -326,12 +328,27 @@ export class UIManager {
     const form = document.getElementById('compose-form');
     const feelingPills = backdrop.querySelectorAll('#feeling-selector .feeling-pill');
     let selectedFeeling = '';
+    let composerCoords = null;
 
     // Prefill the handle with the signed-in display name (if any)
     const authorInput = document.getElementById('author-input');
     const activeUser = currentUser();
     if (authorInput && isRegistered(activeUser)) {
       authorInput.value = displayNameOf(activeUser);
+    }
+
+    // Default the reflection's location to the user's current position when the
+    // browser can provide it, so entries land where the writer actually is.
+    const cityInput = document.getElementById('city-input');
+    if (cityInput && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          composerCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          cityInput.value = 'My Location';
+        },
+        () => { /* keep the default city text */ },
+        { timeout: 8000, maximumAge: 60000 }
+      );
     }
 
     // Feeling selection toggle
@@ -417,6 +434,10 @@ export class UIManager {
       let lat = 30.0444;
       let lng = 31.2357;
       if (destination === 'earth') {
+        if (city.toLowerCase() === 'my location' && composerCoords) {
+          lat = composerCoords.lat;
+          lng = composerCoords.lng;
+        } else {
         const cityLower = city.toLowerCase();
         if (cityLower.includes('cairo') || cityLower.includes('egypt')) { lat = 30.0444; lng = 31.2357; }
         else if (cityLower.includes('tokyo') || cityLower.includes('japan')) { lat = 35.6762; lng = 139.6503; }
@@ -430,6 +451,7 @@ export class UIManager {
           // Semi-random scatter around Mediterranean / Northern hemisphere
           lat = 20 + Math.random() * 35;
           lng = -20 + Math.random() * 80;
+        }
         }
       }
 
@@ -517,6 +539,10 @@ export class UIManager {
           <span class="auth-avatar">${this.escapeHtml(initialOf(user))}</span>
           <span class="auth-name">${this.escapeHtml(name)}</span>
         </div>
+        <button class="view-btn" id="edit-profile-btn" title="Edit your handle">
+          <span>✏️</span>
+          <span>Edit Handle</span>
+        </button>
         ${unverified ? `
         <button class="view-btn" id="verify-email-btn"
                 title="Confirm the email address on this account">
@@ -535,6 +561,9 @@ export class UIManager {
       });
 
       // The verification link is only useful for an unconfirmed email account.
+      const editBtn = container.querySelector('#edit-profile-btn');
+      editBtn?.addEventListener('click', () => this.showProfileModal());
+
       const verifyBtn = container.querySelector('#verify-email-btn');
       const verifyLabel = container.querySelector('#verify-email-label');
       verifyBtn?.addEventListener('click', async () => {
@@ -577,6 +606,217 @@ export class UIManager {
     if (document.getElementById('auth-modal-backdrop')) {
       this.mountRoot.innerHTML = '';
     }
+  }
+
+  initMobileMenu() {
+    const btn = document.getElementById('mobile-menu-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => this.showMobileMenu());
+  }
+
+  showMobileMenu() {
+    const menu = document.getElementById('mobile-menu');
+    if (!menu) return;
+    const items = document.getElementById('mobile-menu-items');
+    if (!items) return;
+
+    const user = currentUser();
+    const signedIn = isRegistered(user);
+
+    const trigger = (id) => {
+      const el = document.getElementById(id);
+      if (el) el.click();
+    };
+
+
+    const filterAllActive = document.querySelector('.filter-btn.active[data-filter="all"], .filter-btn.active')?.dataset?.filter === 'all';
+    const userCard = signedIn ? `
+      <div class="mobile-menu-user">
+        <span class="mobile-menu-avatar">${this.escapeHtml(initialOf(user))}</span>
+        <div class="mobile-menu-userinfo">
+          <span class="mobile-menu-username">${this.escapeHtml(displayNameOf(user))}</span>
+          <span class="mobile-menu-email">${this.escapeHtml(user.email || '')}</span>
+        </div>
+      </div>
+      <div class="mobile-menu-divider"></div>
+    ` : '';
+
+    items.innerHTML = `
+      ${userCard}
+      <button class="mobile-menu-item" data-action="filterAll">
+        <span class="item-icon">🌐</span><span>All Stories</span>
+      </button>
+      <button class="mobile-menu-item" data-action="filterRecent">
+        <span class="item-icon">🕐</span><span>Recent / Today</span>
+      </button>
+      <div class="mobile-menu-divider"></div>
+      <button class="mobile-menu-item" data-action="location">
+        <span class="item-icon">📍</span><span>My Location</span>
+      </button>
+      <button class="mobile-menu-item" data-action="import">
+        <span class="item-icon">📥</span><span>Import Journal</span>
+      </button>
+      <button class="mobile-menu-item" data-action="checkin">
+        <span class="item-icon">💙</span><span>Check In</span>
+      </button>
+      ${this.reviewerRole ? `
+      <button class="mobile-menu-item" data-action="reviewQueue">
+        <span class="item-icon">💬</span><span>Review Queue</span>
+      </button>` : ''}
+      <div class="mobile-menu-divider"></div>
+      ${signedIn ? `
+        <button class="mobile-menu-item" data-action="myJournal">
+          <span class="item-icon">📖</span><span>My Journal</span>
+        </button>
+        <button class="mobile-menu-item" data-action="editHandle">
+          <span class="item-icon">✏️</span><span>Edit Handle</span>
+        </button>
+        ${needsEmailVerification(user) ? `
+        <button class="mobile-menu-item" data-action="verifyEmail">
+          <span class="item-icon">✉️</span><span>Verify Email</span>
+        </button>` : ''}
+        <button class="mobile-menu-item" data-action="signout">
+          <span class="item-icon">⎋</span><span>Sign Out</span>
+        </button>
+      ` : `
+        <button class="mobile-menu-item" data-action="signin">
+          <span class="item-icon">🔐</span><span>Sign In</span>
+        </button>
+      `}
+    `;
+
+    const close = () => { menu.hidden = true; };
+
+    const backdrop = document.getElementById('mobile-menu-backdrop');
+    const closeBtn = document.getElementById('mobile-menu-close');
+    backdrop?.addEventListener('click', close, { once: true });
+    closeBtn?.addEventListener('click', close, { once: true });
+
+    items.querySelectorAll('.mobile-menu-item').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        close();
+        switch (action) {
+          case 'filterAll': {
+            const b = document.querySelector('.filter-btn[data-filter="all"]');
+            if (b) b.click();
+            break;
+          }
+          case 'filterRecent': {
+            const b = document.querySelector('.filter-btn[data-filter="recent"]');
+            if (b) b.click();
+            break;
+          }
+          case 'location': trigger('reset-view-btn'); break;
+          case 'import': trigger('import-btn'); break;
+          case 'checkin': trigger('checkin-btn'); break;
+          case 'reviewQueue': {
+            const b = document.getElementById('review-queue-btn');
+            if (b) b.click();
+            break;
+          }
+          case 'myJournal': this.showMyJournal(); break;
+          case 'editHandle': this.showProfileModal(); break;
+          case 'verifyEmail': {
+            const v = document.getElementById('verify-email-btn');
+            if (v) v.click();
+            break;
+          }
+          case 'signout': {
+            const s = document.getElementById('auth-signout-btn');
+            if (s) s.click();
+            break;
+          }
+          case 'signin': {
+            const s = document.getElementById('auth-signin-btn');
+            if (s) s.click();
+            else this.showAuthModal('signin');
+            break;
+          }
+        }
+      });
+    });
+
+    menu.hidden = false;
+  }
+
+  showMyJournal() {
+    const user = currentUser();
+    if (!isRegistered(user)) {
+      this.showAuthModal('signin');
+      return;
+    }
+    const handle = displayNameOf(user);
+    const mine = this.store.getAuthorEntries(handle);
+    if (mine.length === 0) {
+      window.alert('You haven\'t written any reflections yet. Share one to start your journal.');
+      return;
+    }
+    this.showAuthorModal(mine[0].id);
+  }
+
+  showProfileModal() {
+    const user = currentUser();
+    if (!isRegistered(user)) return;
+    const current = displayNameOf(user);
+    this.mountRoot.innerHTML = `
+      <div class="modal-backdrop" id="profile-modal-backdrop">
+        <div class="modal-card">
+          <button class="modal-close" id="profile-close-btn" aria-label="Close">&times;</button>
+          <h2 class="author-name">Edit your handle</h2>
+          <p class="author-location">This name appears on everything you share, so people know it's really you.</p>
+          <form id="profile-form">
+            <div class="form-group">
+              <label for="profile-handle">Handle</label>
+              <input type="text" id="profile-handle" class="form-control" required maxlength="40"
+                     value="${this.escapeHtml(current)}" placeholder="e.g. Nasser, StarSeeker" autocomplete="nickname" />
+            </div>
+            <div id="profile-error" class="hint-text"></div>
+            <div class="composer-actions">
+              <button type="submit" class="submit-entry-btn">
+                <span>Save</span>
+                <span>✨</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const backdrop = document.getElementById('profile-modal-backdrop');
+    const closeBtn = document.getElementById('profile-close-btn');
+    const form = document.getElementById('profile-form');
+    const input = document.getElementById('profile-handle');
+    const errorEl = document.getElementById('profile-error');
+
+    const closeModal = () => { this.mountRoot.innerHTML = ''; };
+
+    closeBtn.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const value = input.value.trim();
+      if (!value) {
+        errorEl.textContent = 'Handle cannot be empty.';
+        errorEl.classList.add('error-text');
+        return;
+      }
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        await updateDisplayName(value);
+        closeModal();
+        this.renderAuthControls(currentUser());
+      } catch (err) {
+        errorEl.textContent = err?.message || 'Could not save your handle. Please try again.';
+        errorEl.classList.add('error-text');
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+
+    // Focus the input for quick editing.
+    setTimeout(() => input?.focus(), 50);
   }
 
   showAuthModal(mode = 'signin') {
@@ -1080,8 +1320,8 @@ export class UIManager {
 
   /** Add the header entry point, once, for a confirmed reviewer. */
   renderReviewerEntryPoint(role) {
-    const headerControls = document.querySelector('.header-controls');
-    if (!headerControls) return;
+    const container = document.querySelector('.header-left') || document.querySelector('.app-header');
+    if (!container) return;
 
     let btn = document.getElementById('review-queue-btn');
     if (!btn) {
@@ -1090,10 +1330,10 @@ export class UIManager {
       btn.className = 'view-btn';
       btn.innerHTML = '<span>💬</span><span>Review Queue</span>';
       const authControls = document.getElementById('auth-controls');
-      if (authControls && authControls.parentNode === headerControls) {
-        headerControls.insertBefore(btn, authControls);
+      if (authControls && authControls.parentNode === container) {
+        container.insertBefore(btn, authControls);
       } else {
-        headerControls.appendChild(btn);
+        container.appendChild(btn);
       }
       btn.addEventListener('click', () => this.showReviewQueueModal());
     }
