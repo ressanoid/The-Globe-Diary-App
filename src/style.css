@@ -350,6 +350,7 @@ body[data-theme="day"] .fab-btn {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overflow-y: auto;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   color: var(--text-primary);
 }
@@ -1359,4 +1360,12 @@ body[data-theme="day"] .fab-btn {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .modal-close {
+    width: 40px;
+    height: 40px;
+    font-size: 22px;
+  }
 }

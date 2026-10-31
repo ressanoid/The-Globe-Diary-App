@@ -160,7 +160,10 @@ const buildPrompt = (text, date) => {
 const tryAiSplit = async (text, date) => {
   if (!isAiAvailable()) return [];
   try {
-    const result = await model.generateContent(buildPrompt(text, date));
+    const result = await Promise.race([
+      model.generateContent(buildPrompt(text, date)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('AI request timed out')), 8000))
+    ]);
     // `response.text()` is a METHOD — call it; parse may still throw.
     return parseModelOutput(result.response.text());
   } catch (error) {

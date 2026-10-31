@@ -41,6 +41,14 @@ export class GlobeScene {
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.25;
 
+    // Cancel any in-flight camera animation as soon as the user starts
+    // interacting, so the globe feels responsive instead of fighting input.
+    this.controls.addEventListener('start', () => {
+      this.targetCameraPos = null;
+      this.targetLookAt = null;
+      this.controls.autoRotate = false;
+    });
+
     this.activeFocusTarget = 'earth';
 
     this.globeRadius = 80;
